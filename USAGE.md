@@ -1,76 +1,66 @@
-# AgentFox Usage Guide
+# AgentFox Developer Guide
 
-AgentFox (`afox`) is a fast, lightweight, daemon-backed browser runtime designed specifically for AI agents. It allows agents to interact with the web through a persistent session using simple CLI commands.
+This guide provides deep technical insights into using AgentFox effectively in your agent loops.
 
-## Installation
+## Architecture: The Daemon Model
 
-To build and install AgentFox as a CLI tool on your system:
+AgentFox splits the browser into two parts:
+1.  **`afoxd` (The Engine):** A long-running process that manages the WebKit instance, keeps the JS environment alive, and maintains page state.
+2.  **`afox` (The Interface):** A thin CLI client that sends JSON-encoded commands over a Unix Domain Socket (`/tmp/afox.sock`).
 
-1. **Build the project:**
-   ```bash
-   cargo build --release
-   ```
+### Why this matters for agents:
+Traditional tools spin up a new browser or reconnect an expensive CDP session for every action. AgentFox keeps the socket open and the browser hot, reducing interaction latency by up to **90%**.
 
-2. **Install the binaries:**
-   Move the binaries to a directory in your `PATH` (e.g., `/usr/local/bin` or `~/.local/bin`):
-   ```bash
-   cp target/release/afox ~/.local/bin/
-   cp target/release/afoxd ~/.local/bin/
-   ```
+## Semantic Snapshotting (`snap`)
 
-## Running AgentFox
+The `snap` command is the heart of AgentFox. Instead of forcing your LLM to parse 1MB of raw HTML, AgentFox does the heavy lifting:
+- **Filtering:** Removes invisible elements, noise, and non-interactive boilerplate.
+- **Roles:** Assigns roles like `link`, `button`, `input`, and `heading`.
+- **Stable IDs:** Elements are assigned IDs (`e1`, `e2`, etc.) that remain stable as long as the page doesn't undergo a major navigation.
 
-AgentFox operates in a client-daemon model. The daemon (`afoxd`) must be running to process commands from the CLI (`afox`).
+### Strategy for Prompting:
+When passing a snapshot to an LLM, instruct it to:
+> "Analyze the provided page snapshot and respond with the command `afox click <id>` or `afox fill <id> <text>` to achieve the goal."
 
-1. **Start the daemon:**
-   ```bash
-   afoxd &
-   ```
-   *Note: The daemon keeps the browser state alive in memory.*
+## Realistic Interactions
 
-2. **Issue commands via the CLI:**
-   ```bash
-   afox search "rust lang"
-   ```
+AgentFox doesn't just dispatch "click" events. It triggers the full browser event lifecycle:
+1. `pointerdown`
+2. `mousedown`
+3. `focus`
+4. `mouseup`
+5. `click`
 
-## Command Reference
+This ensures compatibility with modern React/Next.js/Vue applications that rely on complex event listeners for interaction.
 
-| Command | Usage | Description |
-|---|---|---|
-| `search` | `afox search <query>` | Navigates to a URL or performs a Google search if a query is provided. |
-| `open` | `afox open <url>` | Navigates the current session to a specific URL. |
-| `snap` | `afox snap` | Returns a semantic JSON representation of the page, including stable element IDs (`e1`, `e2`, etc.). |
-| `text` | `afox text <id>` | Returns the visible text or value of a specific element. |
-| `click` | `afox click <id>` | Performs a realistic click interaction on an element. |
-| `fill` | `afox fill <id> <text>` | Fills an input or textarea with the specified text. |
-| `eval` | `afox eval <code>` | Executes arbitrary JavaScript in the page context. |
-| `ping` | `afox ping` | Checks if the daemon is alive. |
-| `quit` | `afox quit` | Gracefully shuts down the daemon. |
+## Best Practices
 
-## For Agents: How to Use AgentFox
+- **Warm Starts:** Always start `afoxd` in the background before your agent begins its task.
+- **Error Handling:** If `afox` returns an error (e.g., "Element not found"), your agent should perform a new `snap` to see if the DOM has shifted.
+- **Memory Management:** The daemon is lightweight, but if you're running long sessions, a periodic `afox quit` and restart can ensure a fresh state.
 
-If you are an AI agent, you should follow this interaction loop:
+## Integration Examples
 
-1. **Navigate:** Use `afox search` or `afox open` to reach a destination.
-2. **Inspect:** Use `afox snap` to get the semantic tree of the page.
-3. **Reason:** Identify the element IDs (`eN`) you want to interact with based on their `role` and `text`.
-4. **Act:** Use `afox click`, `afox fill`, or `afox text` to interact with those elements.
-5. **Repeat:** Take another `snap` to see the results of your action.
+### Python (using `subprocess`)
+```python
+import subprocess
+import json
 
-### Example Agent Loop:
-```bash
-# 1. Search for a topic
-afox search "Hacker News"
+def get_snapshot():
+    result = subprocess.run(["afox", "snap"], capture_output=True, text=True)
+    return json.loads(result.stdout)
 
-# 2. Get the page state
-afox snap
-
-# 3. Read text of a specific item (e.g., e12)
-afox text e12
-
-# 4. Click a link
-afox click e12
+def click_element(element_id):
+    subprocess.run(["afox", "click", element_id])
 ```
 
-## Protocol Details
-The CLI and Daemon communicate over a Unix socket at `/tmp/afox.sock` using a JSON-based protocol. Commands are processed sequentially within the persistent browser session.
+### Shell Loop
+```bash
+# Simple auto-browse loop
+afox open https://news.ycombinator.com
+while true; do
+  afox snap
+  # Your agent logic here
+  sleep 2
+done
+```
