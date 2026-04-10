@@ -5,10 +5,18 @@ version = 4
 [[package]]
 name = "afox"
 version = "0.1.0"
+dependencies = [
+ "agentfox-protocol",
+ "serde_json",
+]
 
 [[package]]
 name = "afoxd"
 version = "0.1.0"
+dependencies = [
+ "agentfox-protocol",
+ "serde_json",
+]
 
 [[package]]
 name = "agentfox-protocol"
