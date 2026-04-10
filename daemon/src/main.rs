@@ -1,5 +1,6 @@
 mod browser;
 
+use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -8,25 +9,44 @@ use std::process::ExitCode;
 use agentfox_protocol::{LOG_PATH, Request, Response, SOCKET_PATH};
 use browser::Browser;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn main() -> ExitCode {
+    let args: Vec<String> = env::args().skip(1).collect();
+    if !args.is_empty() {
+        if args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
+            println!("{}", usage());
+            return ExitCode::SUCCESS;
+        }
+        if args[0] == "--version" || args[0] == "-v" {
+            println!("afoxd version {}", VERSION);
+            return ExitCode::SUCCESS;
+        }
+    }
+
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("daemon error: {error}");
             ExitCode::FAILURE
         }
     }
 }
 
 fn run() -> Result<(), String> {
+    println!("Starting AgentFox Daemon v{}...", VERSION);
     let browser = Browser::new()?;
 
     if fs::metadata(SOCKET_PATH).is_ok() {
         fs::remove_file(SOCKET_PATH).map_err(|err| format!("failed to remove stale socket: {err}"))?;
     }
 
-    let listener = UnixListener::bind(SOCKET_PATH).map_err(|err| format!("failed to bind socket: {err}"))?;
-    log_line("daemon started")?;
+    let listener = UnixListener::bind(SOCKET_PATH).map_err(|err| {
+        format!("failed to bind socket {}. Is another instance running? error: {}", SOCKET_PATH, err)
+    })?;
+    
+    log_line(&format!("daemon v{} started", VERSION))?;
+    println!("Daemon listening on {}", SOCKET_PATH);
 
     for stream in listener.incoming() {
         let stream = match stream {
@@ -45,6 +65,7 @@ fn run() -> Result<(), String> {
 
     fs::remove_file(SOCKET_PATH).ok();
     log_line("daemon stopped")?;
+    println!("Daemon shutdown complete.");
     Ok(())
 }
 
@@ -57,7 +78,17 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
             .map_err(|err| format!("failed to read request: {err}"))?;
     }
 
-    let request: Request = serde_json::from_str(line.trim()).map_err(|err| format!("failed to decode request: {err}"))?;
+    let request: Request = match serde_json::from_str(line.trim()) {
+        Ok(req) => req,
+        Err(err) => {
+            let resp = Response::error(format!("failed to decode request: {err}"));
+            let payload = serde_json::to_string(&resp).unwrap();
+            let _ = stream.write_all(payload.as_bytes());
+            let _ = stream.write_all(b"\n");
+            return Ok(false);
+        }
+    };
+    
     log_line(&format!("request: {request:?}"))?;
 
     let (response, should_quit) = match request {
@@ -169,4 +200,18 @@ fn log_line(message: &str) -> Result<(), String> {
         .map_err(|err| format!("failed to open log file: {err}"))?;
     writeln!(file, "{message}").map_err(|err| format!("failed to write log entry: {err}"))?;
     Ok(())
+}
+
+fn usage() -> String {
+    format!(
+        "AgentFox Daemon (afoxd) v{}\n\
+        The persistent browser engine for AI agents.\n\n\
+        USAGE:\n\
+          afoxd [FLAGS]\n\n\
+        FLAGS:\n\
+          -h, --help          Show this help message\n\
+          -v, --version       Show version information\n\n\
+        The daemon runs in the foreground by default. Use 'afoxd &' to run in the background.",
+        VERSION
+    )
 }
