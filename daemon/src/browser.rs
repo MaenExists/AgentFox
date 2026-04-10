@@ -57,6 +57,7 @@ impl Browser {
     }
 
     pub fn open(&self, url: &str) -> Result<PageInfo, String> {
+        self.selectors.borrow_mut().clear();
         let loop_ = MainLoop::new(None, false);
         let result: Rc<RefCell<Option<Result<(), String>>>> = Rc::new(RefCell::new(None));
 
@@ -105,6 +106,70 @@ impl Browser {
             Some(Err(error)) => Err(error),
             None => Err("page load ended without a result".to_string()),
         }
+    }
+
+    pub fn click(&self, element_id: &str) -> Result<PageInfo, String> {
+        let selector = self.selector_for(element_id)?;
+        let selector = serde_json::to_string(&selector)
+            .map_err(|error| format!("failed to encode selector: {error}"))?;
+
+        self.eval(&format!(
+            r#"
+            (() => {{
+              const selector = {selector};
+              const el = document.querySelector(selector);
+              if (!el) {{
+                throw new Error(`Element for selector '${{selector}}' not found`);
+              }}
+              const eventInit = {{ bubbles: true, cancelable: true, composed: true, view: window }};
+              const down = window.PointerEvent || window.MouseEvent;
+              const up = window.PointerEvent || window.MouseEvent;
+              el.dispatchEvent(new down("pointerdown", eventInit));
+              el.dispatchEvent(new MouseEvent("mousedown", eventInit));
+              if (typeof el.focus === "function") el.focus();
+              el.dispatchEvent(new MouseEvent("mouseup", eventInit));
+              el.dispatchEvent(new MouseEvent("click", eventInit));
+              return true;
+            }})()
+            "#
+        ))?;
+
+        self.pump_for(Duration::from_millis(300));
+        if self.webview.is_loading() {
+            self.wait_for_finish(Duration::from_secs(10))?;
+            self.selectors.borrow_mut().clear();
+        }
+        self.page_info()
+    }
+
+    pub fn fill(&self, element_id: &str, text: &str) -> Result<(), String> {
+        let selector = self.selector_for(element_id)?;
+        let selector = serde_json::to_string(&selector)
+            .map_err(|error| format!("failed to encode selector: {error}"))?;
+        let text =
+            serde_json::to_string(text).map_err(|error| format!("failed to encode fill text: {error}"))?;
+
+        self.eval(&format!(
+            r#"
+            (() => {{
+              const selector = {selector};
+              const value = {text};
+              const el = document.querySelector(selector);
+              if (!el) {{
+                throw new Error(`Element for selector '${{selector}}' not found`);
+              }}
+              if (!("value" in el)) {{
+                throw new Error("Target element is not fillable");
+              }}
+              if (typeof el.focus === "function") el.focus();
+              el.value = value;
+              el.dispatchEvent(new InputEvent("input", {{ bubbles: true, cancelable: true, data: value, inputType: "insertText" }}));
+              el.dispatchEvent(new Event("change", {{ bubbles: true, cancelable: true }}));
+              return true;
+            }})()
+            "#
+        ))?;
+        Ok(())
     }
 
     pub fn eval(&self, script: &str) -> Result<Value, String> {
@@ -266,12 +331,7 @@ impl Browser {
     }
 
     pub fn text(&self, element_id: &str) -> Result<String, String> {
-        let selector = self
-            .selectors
-            .borrow()
-            .get(element_id)
-            .cloned()
-            .ok_or_else(|| format!("Element '{element_id}' not found"))?;
+        let selector = self.selector_for(element_id)?;
         let selector = serde_json::to_string(&selector)
             .map_err(|error| format!("failed to encode selector: {error}"))?;
         self.evaluate_string(&format!(
@@ -289,6 +349,78 @@ impl Browser {
             }})()
             "#
         ))
+    }
+
+    fn page_info(&self) -> Result<PageInfo, String> {
+        Ok(PageInfo {
+            url: self
+                .webview
+                .uri()
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            title: self.evaluate_string("document.title")?.trim_matches('"').to_string(),
+        })
+    }
+
+    fn selector_for(&self, element_id: &str) -> Result<String, String> {
+        self.selectors
+            .borrow()
+            .get(element_id)
+            .cloned()
+            .ok_or_else(|| format!("Element '{element_id}' not found"))
+    }
+
+    fn pump_for(&self, duration: Duration) {
+        let loop_ = MainLoop::new(None, false);
+        let timeout_loop = loop_.clone();
+        glib::timeout_add_local_once(duration, move || timeout_loop.quit());
+        loop_.run();
+    }
+
+    fn wait_for_finish(&self, duration: Duration) -> Result<(), String> {
+        let loop_ = MainLoop::new(None, false);
+        let result: Rc<RefCell<Option<Result<(), String>>>> = Rc::new(RefCell::new(None));
+
+        let completed = result.clone();
+        let completed_loop = loop_.clone();
+        let load_changed_id = self.webview.connect_load_changed(move |_, event| {
+            if event == LoadEvent::Finished {
+                completed.borrow_mut().replace(Ok(()));
+                completed_loop.quit();
+            }
+        });
+
+        let failed = result.clone();
+        let failed_loop = loop_.clone();
+        let load_failed_id = self.webview.connect_load_failed(move |_, _, uri, error| {
+            failed
+                .borrow_mut()
+                .replace(Err(format!("failed to load: {uri} - {error}")));
+            failed_loop.quit();
+            false
+        });
+
+        let timed_out = result.clone();
+        let timeout_loop = loop_.clone();
+        let timeout_id = glib::timeout_add_local_once(duration, move || {
+            if timed_out.borrow().is_none() {
+                timed_out
+                    .borrow_mut()
+                    .replace(Err("page load timed out after click".to_string()));
+            }
+            timeout_loop.quit();
+        });
+
+        loop_.run();
+
+        self.webview.disconnect(load_changed_id);
+        self.webview.disconnect(load_failed_id);
+        timeout_id.remove();
+
+        match result.borrow_mut().take() {
+            Some(result) => result,
+            None => Ok(()),
+        }
     }
 
     fn evaluate_string(&self, script: &str) -> Result<String, String> {

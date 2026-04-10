@@ -91,8 +91,24 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
             ),
             Err(error) => (Response::error(error), false),
         },
-        Request::Click { .. } => (Response::error("click not implemented yet"), false),
-        Request::Fill { .. } => (Response::error("fill not implemented yet"), false),
+        Request::Click { element_id } => match browser.click(&element_id) {
+            Ok(page) => (
+                Response::Ok {
+                    message: None,
+                    url: Some(page.url),
+                    title: Some(page.title),
+                    text: None,
+                    result: None,
+                    elements: None,
+                },
+                false,
+            ),
+            Err(error) => (Response::error(error), false),
+        },
+        Request::Fill { element_id, text } => match browser.fill(&element_id, &text) {
+            Ok(()) => (Response::ok_message("filled element"), false),
+            Err(error) => (Response::error(error), false),
+        },
         Request::Text { element_id } => match browser.text(&element_id) {
             Ok(text) => (
                 Response::Ok {
