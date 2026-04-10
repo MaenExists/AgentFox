@@ -1,99 +1,134 @@
-# 🦊 AgentFox
+<p align="center">
+  <img src="docs/assets/logo.svg" width="150" alt="AgentFox Logo">
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/)
-[![Status: Production Grade](https://img.shields.io/badge/Status-Production--Grade-brightgreen.svg)]()
-[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](CONTRIBUTING.md)
+<h1 align="center">AgentFox (afox)</h1>
 
-**AgentFox** is a high-performance, persistent browser runtime engineered for the AI agentic era.
+<p align="center">
+  <strong>The High-Performance, Persistent Browser Runtime for AI Agents.</strong>
+</p>
 
-Stop treating your agents like web testers. Traditional frameworks like Puppeteer and Playwright were built for human-authored test scripts. **AgentFox is built for the agentic loop.**
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Language-Rust-orange.svg" alt="Rust"></a>
+  <img src="https://img.shields.io/badge/Status-Production--Grade-brightgreen.svg" alt="Status">
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-Welcome-brightgreen.svg" alt="PRs Welcome"></a>
+</p>
+
+---
+
+## 🦊 What is AgentFox?
+
+**AgentFox** is not another browser automation framework. It's a **browser runtime** designed specifically for the low-latency, high-frequency interaction loops required by modern AI agents.
+
+Traditional tools like Puppeteer and Playwright were built for human-authored test scripts. They are heavy, slow to start, and leak automation internals. **AgentFox** flips the script by providing a persistent, daemon-backed surface that stays "hot," allowing agents to navigate, inspect, and act with near-zero overhead.
 
 ---
 
 ## 🔥 Key Advantages
 
-*   **Zero Cold-Start:** The daemon (`afoxd`) maintains a hot browser instance. Action latency is measured in milliseconds, not seconds.
-*   **Persistent Interaction:** Navigate, click, and fill across independent CLI calls. The session state lives as long as the daemon does.
-*   **Agent-Native Snapshots:** `afox snap` provides a clean, semantic JSON representation of the page, optimized for LLM reasoning. No more raw HTML noise.
-*   **Lightweight Footprint:** Built with Rust and WebKitGTK. Meaningfully lower memory and CPU overhead compared to Chromium-based stacks.
-*   **Simple CLI Interface:** Perfect for shell-based agent loops or any language capable of executing a process.
+### ⚡ Zero Latency Interaction
+Existing tools often require re-initializing a browser session or reconnecting a CDP bridge for every action. AgentFox keeps the browser warm in a background daemon (`afoxd`). Commands execute instantly over a local Unix socket.
+
+### 🧠 Semantic-First Inspection
+Agents shouldn't have to parse megabytes of raw HTML. The `afox snap` command returns a **Semantic Snapshot**: a compressed, structured tree of interactive elements (links, buttons, inputs) with stable IDs.
+
+### 🔄 Persistent State
+Navigate to a site, perform a search, and click a result across independent CLI calls. The daemon maintains the full JS and DOM state, so your agent can "think" between actions without losing context.
+
+### 🍃 Lightweight & Secure
+Built in **Rust** and powered by **WebKitGTK**, AgentFox is significantly lighter than Chromium-based stacks. It provides a clean security boundary between your agent logic and the browser engine.
 
 ---
 
 ## 🚀 One-Line Installation
 
-Install the AgentFox suite to your local system (`~/.local/bin`):
+Get AgentFox up and running in seconds:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/user/AgentFox/main/install.sh | bash
 ```
 
-*Prerequisites: Rust toolchain and WebKitGTK development libraries (e.g., `libwebkit2gtk-4.1-dev` on Linux).*
+> **Requirements:** Rust toolchain and WebKitGTK headers (e.g., `libwebkit2gtk-4.1-dev` on Ubuntu/Debian).
 
 ---
 
-## 📖 The Agentic Loop
+## 📖 The Agentic Workflow
 
 AgentFox is optimized for the **Inspect -> Reason -> Act** cycle.
 
 ### 1. Start the Engine
+The daemon keeps the browser instance alive in memory.
 ```bash
 afoxd &
 ```
 
-### 2. Intelligent Navigation
+### 2. Intelligent Search
+Smart navigation resolves URLs or queries instantly.
 ```bash
-afox search "latest advancements in AGI"
+afox search "latest breakthroughs in nuclear fusion"
 ```
 
-### 3. Semantic Inspection
-```bash
-afox snap
-```
-Returns a structured tree:
+### 3. Semantic Snapshots
+Get exactly what the agent needs to see.
 ```json
+// afox snap
 {
-  "url": "https://example.com",
+  "url": "https://science.org/fusion",
+  "title": "Fusion News",
   "elements": [
-    {"id": "e1", "role": "heading", "text": "The Future of Agents"},
-    {"id": "e2", "role": "link", "text": "Read the Paper", "href": "/research/agi-2026"}
+    {"id": "e1", "role": "heading", "text": "New Record in Fusion Energy"},
+    {"id": "e2", "role": "link", "text": "Read Full Report", "href": "/news/fusion-record"}
   ]
 }
 ```
 
 ### 4. Direct Action
+Interact using stable, predictable IDs.
 ```bash
 afox click e2
-afox fill e5 "agent@fox.com"
+afox fill e5 "agent@agentfox.dev"
 ```
 
 ---
 
-## 🛠 Commands
+## 🛠 Command Reference
 
 | Command | Purpose |
 |---|---|
-| `afox search <query>` | Smart navigation: URL or search query. |
-| `afox snap` | Get a semantic snapshot of the current page. |
-| `afox click <id>` | Perform a realistic browser-level click. |
-| `afox fill <id> <text>` | Input text into fields. |
-| `afox text <id>` | Extract text or value from an element. |
-| `afox eval <code>` | Run arbitrary JS as an escape hatch. |
-| `afox quit` | Shutdown the runtime gracefully. |
+| `afox search <query>` | Smart navigation: automatically handles URLs or search queries. |
+| `afox open <url>`     | Direct navigation to a specific URL. |
+| `afox snap`           | Generates a semantic JSON snapshot of the current page. |
+| `afox click <id>`     | Triggers a realistic, multi-event click on an element. |
+| `afox fill <id> <val>`| Inputs text into form fields and triggers input events. |
+| `afox text <id>`      | Extracts the clean text content or value of an element. |
+| `afox eval <code>`    | Executes arbitrary JavaScript as an escape hatch. |
+| `afox quit`           | Shuts down the background daemon gracefully. |
 
 ---
 
-## 📚 Documentation
-- [Getting Started Guide](docs/getting-started.md)
-- [Contributing Guide](CONTRIBUTING.md)
-- [Internal Architecture](docs/internal/project.md)
+## 🏗 Architecture
+
+AgentFox uses a client-daemon architecture to ensure performance:
+
+```text
+  [ Agent Logic ] 
+        |
+  [ afox CLI ] <--- (JSON over Unix Socket) ---> [ afoxd Daemon ]
+                                                      |
+                                               [ WebKit Engine ]
+```
 
 ---
 
-## 📜 License
-AgentFox is open-source software licensed under the [MIT License](LICENSE).
+## 📚 Resources
+
+- **[Getting Started](docs/getting-started.md):** A deep dive into integrating AgentFox with your agent.
+- **[Contributing](CONTRIBUTING.md):** How to help build the future of agentic browsing.
+- **[License](LICENSE):** MIT Licensed.
 
 ---
 
-*“AgentFox: A browser that thinks, inspects, and acts at the speed of your agent.”*
+<p align="center">
+  Built for the agentic era. Built for speed. Built by 🦊 <strong>AgentFox Contributors</strong>.
+</p>
