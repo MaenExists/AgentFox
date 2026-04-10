@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -12,6 +13,7 @@ use webkit2gtk::{LoadEvent, TLSErrorsPolicy, WebContext, WebContextExt, WebView,
 
 pub struct Browser {
     webview: WebView,
+    selectors: RefCell<HashMap<String, String>>,
 }
 
 pub struct PageInfo {
@@ -29,7 +31,17 @@ pub struct Snapshot {
 struct SnapshotPayload {
     url: String,
     title: String,
-    elements: Vec<SemanticNode>,
+    elements: Vec<SnapshotElement>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SnapshotElement {
+    id: String,
+    role: String,
+    text: Option<String>,
+    href: Option<String>,
+    value: Option<String>,
+    selector: String,
 }
 
 impl Browser {
@@ -38,7 +50,10 @@ impl Browser {
         let context = WebContext::default().ok_or_else(|| "failed to create web context".to_string())?;
         context.set_tls_errors_policy(TLSErrorsPolicy::Ignore);
         let webview = WebView::builder().web_context(&context).build();
-        Ok(Self { webview })
+        Ok(Self {
+            webview,
+            selectors: RefCell::new(HashMap::new()),
+        })
     }
 
     pub fn open(&self, url: &str) -> Result<PageInfo, String> {
@@ -169,6 +184,24 @@ impl Browser {
                 return "";
               };
 
+              const cssPath = (el) => {
+                const segments = [];
+                let current = el;
+                while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body) {
+                  const tag = current.tagName.toLowerCase();
+                  let index = 1;
+                  let sibling = current.previousElementSibling;
+                  while (sibling) {
+                    if (sibling.tagName === current.tagName) index += 1;
+                    sibling = sibling.previousElementSibling;
+                  }
+                  segments.unshift(`${tag}:nth-of-type(${index})`);
+                  current = current.parentElement;
+                }
+                segments.unshift("body");
+                return segments.join(" > ");
+              };
+
               const candidates = Array.from(
                 document.querySelectorAll("a, button, input, textarea, select, label, h1, h2, h3, h4, h5, h6, p, [role]")
               );
@@ -193,7 +226,8 @@ impl Browser {
                   role: inferRole(el),
                   text: text || null,
                   href: href || null,
-                  value: value || null
+                  value: value || null,
+                  selector: cssPath(el)
                 });
               }
 
@@ -208,11 +242,53 @@ impl Browser {
 
         let payload: SnapshotPayload =
             serde_json::from_value(value).map_err(|error| format!("failed to decode snapshot: {error}"))?;
+        let mut selectors = self.selectors.borrow_mut();
+        selectors.clear();
+        let elements = payload
+            .elements
+            .into_iter()
+            .map(|element| {
+                selectors.insert(element.id.clone(), element.selector);
+                SemanticNode {
+                    id: element.id,
+                    role: element.role,
+                    text: element.text,
+                    href: element.href,
+                    value: element.value,
+                }
+            })
+            .collect();
         Ok(Snapshot {
             url: payload.url,
             title: payload.title,
-            elements: payload.elements,
+            elements,
         })
+    }
+
+    pub fn text(&self, element_id: &str) -> Result<String, String> {
+        let selector = self
+            .selectors
+            .borrow()
+            .get(element_id)
+            .cloned()
+            .ok_or_else(|| format!("Element '{element_id}' not found"))?;
+        let selector = serde_json::to_string(&selector)
+            .map_err(|error| format!("failed to encode selector: {error}"))?;
+        self.evaluate_string(&format!(
+            r#"
+            (() => {{
+              const selector = {selector};
+              const el = document.querySelector(selector);
+              if (!el) {{
+                throw new Error(`Element for selector '${{selector}}' not found`);
+              }}
+              if ("value" in el && typeof el.value === "string" && el.value.trim()) {{
+                return el.value;
+              }}
+              return (el.innerText || el.textContent || "").trim();
+            }})()
+            "#
+        ))
     }
 
     fn evaluate_string(&self, script: &str) -> Result<String, String> {

@@ -93,7 +93,20 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
         },
         Request::Click { .. } => (Response::error("click not implemented yet"), false),
         Request::Fill { .. } => (Response::error("fill not implemented yet"), false),
-        Request::Text { .. } => (Response::error("text not implemented yet"), false),
+        Request::Text { element_id } => match browser.text(&element_id) {
+            Ok(text) => (
+                Response::Ok {
+                    message: None,
+                    url: None,
+                    title: None,
+                    text: Some(text),
+                    result: None,
+                    elements: None,
+                },
+                false,
+            ),
+            Err(error) => (Response::error(error), false),
+        },
         Request::Eval { code } => match browser.eval(&code) {
             Ok(result) => (
                 Response::Ok {
