@@ -108,6 +108,11 @@ impl Browser {
         }
     }
 
+    pub fn search(&self, query: &str) -> Result<PageInfo, String> {
+        let target = resolve_search_target(query);
+        self.open(&target)
+    }
+
     pub fn click(&self, element_id: &str) -> Result<PageInfo, String> {
         let selector = self.selector_for(element_id)?;
         let selector = serde_json::to_string(&selector)
@@ -429,4 +434,25 @@ impl Browser {
             other => Ok(other.to_string()),
         }
     }
+}
+
+fn resolve_search_target(query: &str) -> String {
+    let trimmed = query.trim();
+    if trimmed.starts_with("http://")
+        || trimmed.starts_with("https://")
+        || trimmed.starts_with("data:")
+        || trimmed.starts_with("file:")
+    {
+        return trimmed.to_string();
+    }
+
+    let looks_like_host = !trimmed.contains(' ')
+        && trimmed.contains('.')
+        && !trimmed.contains("://");
+    if looks_like_host {
+        return format!("https://{trimmed}");
+    }
+
+    let encoded: String = url::form_urlencoded::byte_serialize(trimmed.as_bytes()).collect();
+    format!("https://www.google.com/search?q={encoded}")
 }

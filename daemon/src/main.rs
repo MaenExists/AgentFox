@@ -63,6 +63,20 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
     let (response, should_quit) = match request {
         Request::Ping => (Response::ok_message("pong"), false),
         Request::Quit => (Response::ok_message("shutting down"), true),
+        Request::Search { query } => match browser.search(&query) {
+            Ok(page) => (
+                Response::Ok {
+                    message: None,
+                    url: Some(page.url),
+                    title: Some(page.title),
+                    text: None,
+                    result: None,
+                    elements: None,
+                },
+                false,
+            ),
+            Err(error) => (Response::error(error), false),
+        },
         Request::Open { url } => match browser.open(&url) {
             Ok(page) => (
                 Response::Ok {
