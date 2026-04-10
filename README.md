@@ -1,64 +1,67 @@
 # 🦊 AgentFox
 
-**AgentFox** is a persistent, lightweight browser runtime designed for AI agents.
+**AgentFox** is a high-velocity browser built specifically for AI agents.
 
-Unlike traditional automation frameworks (Puppeteer, Playwright) built for human-authored tests, AgentFox is a daemon-backed CLI tool optimized for the **Inspect -> Reason -> Act** cycle. It provides a "hot" browser surface that agents can use with near-zero latency.
-
----
-
-## Core Features
-
-*   **Persistent Runtime:** The daemon (`afoxd`) keeps the browser alive. Navigate, click, and interact across independent CLI calls without losing state.
-*   **Zero Cold-Start:** Commands execute instantly over a local Unix socket. No re-initializing the browser for every action.
-*   **Semantic Snapshots:** `afox snap` returns a structured JSON tree of interactive elements (links, buttons, inputs) with stable IDs, not raw HTML noise.
-*   **Built with Rust & WebKit:** Low memory footprint and high performance, using WebKitGTK for real-world site compatibility.
-*   **CLI-Native:** Simple command interface for easy integration with any agentic stack (Python, Shell, LangChain, etc.).
+While traditional browsers are built for humans, and automation frameworks (Puppeteer/Playwright) are built for testers, **AgentFox is built for the agentic loop.** It is a daemon-backed, persistent browser that allows agents to search the web and interact with sites with near-zero latency.
 
 ---
 
-## 🚀 Installation
+## ⚡ Why AgentFox?
 
-Install AgentFox to your local system (`~/.local/bin`):
+*   **Fast as fuck:** No cold starts. The daemon (`afoxd`) keeps the browser "hot" in the background. Commands execute instantly over a local Unix socket.
+*   **Persistent Session:** Navigate, click, and browse across independent CLI calls. The browser maintains full session, cookie, and JS state.
+*   **Agent-Native Snapshots:** `afox snap` provides a clean, semantic JSON tree of interactive elements. Your agent gets exactly what it needs to reason, not a 1MB HTML dump.
+*   **Minimal Overhead:** Built with Rust and WebKitGTK. It's significantly lighter and faster than any Chromium-based solution.
+*   **Search First:** A first-class `search` command that intelligently handles both direct URLs and search queries.
+
+---
+
+## 🚀 One-Line Install
+
+Install the AgentFox suite to `~/.local/bin`:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/MaenExists/AgentFox/main/install.sh | bash
 ```
 
-*Note: Requires Rust and WebKitGTK development libraries (e.g., `libwebkit2gtk-4.1-dev` on Linux).*
+*Note: Requires Rust and WebKitGTK headers (`libwebkit2gtk-4.1-dev` on Linux).*
 
 ---
 
-## 📖 Quick Start
+## 📖 The Agentic Loop
 
-### 1. Start the Runtime
+AgentFox is designed for the **Inspect -> Reason -> Act** cycle.
+
+### 1. Start the Browser
 ```bash
 afoxd &
 ```
 
-### 2. Navigate
+### 2. Search & Navigate
 ```bash
-afox search "Hacker News"
+afox search "latest news on autonomous agents"
 ```
 
-### 3. Inspect the Page
+### 3. Inspect the Surface
 ```bash
 afox snap
 ```
 Returns a clean, interactive element tree:
 ```json
 {
-  "url": "https://news.ycombinator.com/",
+  "url": "https://example.com/news",
+  "title": "Agent News",
   "elements": [
-    {"id": "e1", "role": "link", "text": "Hacker News", "href": "news"},
-    {"id": "e12", "role": "link", "text": "Show HN: AgentFox", "href": "item?id=..."}
+    {"id": "e1", "role": "heading", "text": "Agents are the future"},
+    {"id": "e2", "role": "link", "text": "Read More", "href": "/article/1"}
   ]
 }
 ```
 
-### 4. Interact
+### 4. Act Instantly
 ```bash
-afox click e12
-afox fill e5 "Hello World"
+afox click e2
+afox fill e5 "agent@agentfox.dev"
 ```
 
 ---
@@ -67,21 +70,23 @@ afox fill e5 "Hello World"
 
 | Command | Usage | Description |
 |---|---|---|
-| `search` | `afox search <query>` | Smart navigation (URLs or search queries). |
-| `snap`   | `afox snap`         | Get a semantic JSON snapshot of the current page. |
-| `click`  | `afox click <id>`    | Perform a realistic browser-level click. |
-| `fill`   | `afox fill <id> <val>` | Input text into fields/textareas. |
-| `text`   | `afox text <id>`     | Extract clean text content from an element. |
-| `eval`   | `afox eval <code>`    | Run arbitrary JS in the page context. |
-| `quit`   | `afox quit`         | Shutdown the runtime gracefully. |
+| `search` | `afox search <query>` | High-speed navigation (URL or query). |
+| `snap`   | `afox snap`         | Get a semantic JSON snapshot of the page. |
+| `click`  | `afox click <id>`    | Realistic browser-level interaction. |
+| `fill`   | `afox fill <id> <val>` | Instant form input. |
+| `text`   | `afox text <id>`     | Extract clean text content. |
+| `eval`   | `afox eval <code>`    | Escape hatch for raw JS execution. |
+| `quit`   | `afox quit`         | Shutdown the runtime. |
 
 ---
 
-## 🏗 Project Structure
+## 🏗 Architecture
 
-- `cli/`: The `afox` CLI tool.
+AgentFox uses a client-daemon architecture to eliminate the overhead of traditional browser control:
+
+- `cli/`: The `afox` interface.
 - `daemon/`: The `afoxd` browser engine (WebKitGTK).
-- `protocol/`: Shared JSON protocol for IPC.
+- `protocol/`: High-speed JSON protocol for CLI-daemon communication.
 
 ---
 
