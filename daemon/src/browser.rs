@@ -96,7 +96,9 @@ impl Browser {
 
         self.webview.disconnect(load_changed_id);
         self.webview.disconnect(load_failed_id);
-        timeout_id.remove();
+        if let Some(source) = glib::MainContext::default().find_source_by_id(&timeout_id) {
+            source.destroy();
+        }
 
         match result.borrow_mut().take() {
             Some(Ok(())) => Ok(PageInfo {
@@ -213,7 +215,9 @@ impl Browser {
         });
 
         loop_.run();
-        timeout_id.remove();
+        if let Some(source) = glib::MainContext::default().find_source_by_id(&timeout_id) {
+            source.destroy();
+        }
 
         result
             .borrow_mut()
@@ -420,7 +424,9 @@ impl Browser {
 
         self.webview.disconnect(load_changed_id);
         self.webview.disconnect(load_failed_id);
-        timeout_id.remove();
+        if let Some(source) = glib::MainContext::default().find_source_by_id(&timeout_id) {
+            source.destroy();
+        }
 
         match result.borrow_mut().take() {
             Some(result) => result,
