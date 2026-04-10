@@ -1,67 +1,165 @@
 # AgentFox — Build Instructions
 
-## Quick Start for Codex
+## First Read
 
-1. **Read these files first:**
-   - `AGENTS.md` — How to approach this build
-   - `project.md` — What to build (spec)
+Before changing code, read:
 
-2. **Create the Rust project structure:**
+1. `AGENTS.md`
+2. `project.md`
+
+Those files define the product.
+This file defines the build approach.
+
+## Alignment Rule
+
+Do not build AgentFox as:
+
+- a Playwright wrapper
+- a Puppeteer wrapper
+- a generic automation SDK
+- a test framework with shell commands
+
+Build it as:
+
+- a persistent daemon
+- with a thin CLI
+- with semantic outputs
+- with real browser interaction
+- with speed and low memory as top-level requirements
+
+## Recommended Build Sequence
+
+### Step 1: Initialize the workspace
+
+Use a Rust workspace with separate crates for:
+
+- CLI
+- daemon
+- shared protocol/types
+
+Suggested shape:
+
+```text
+AgentFox/
+├── cli/
+├── daemon/
+├── protocol/
+├── AGENTS.md
+├── project.md
+└── README.md
+```
+
+### Step 2: Build command transport first
+
+Before deep browser work, get this right:
+
+- persistent daemon process
+- Unix socket or similarly cheap local IPC
+- structured JSON request/response protocol
+
+This is mandatory because command overhead is part of the product.
+
+### Step 3: Prove persistent browser state
+
+Do not spawn a new browser per command.
+
+The first real technical milestone is:
+
+- daemon starts browser backend once
+- `afox open <url>` reuses that live browser
+- subsequent commands operate on the same page/session
+
+### Step 4: Build the minimum useful command loop
+
+In order:
+
+1. `open`
+2. `snap`
+3. stable element ids
+4. `text`
+5. `click`
+6. `fill`
+7. `eval`
+8. `search`
+
+`search` should be in the MVP, not treated as optional polish.
+
+### Step 5: Measure before expanding scope
+
+As soon as the command loop works, measure:
+
+- cold start time
+- warm command latency
+- daemon memory usage
+- behavior on real modern sites
+
+If the backend undermines the speed thesis, replace it early.
+
+## Backend Guidance
+
+Start with the lightest backend that can:
+
+- render real modern websites
+- maintain session state
+- execute JavaScript
+- support form and click interaction
+
+Candidate backends:
+
+- **WebKitGTK**
+  - good bootstrap choice
+  - lighter than Chrome-based stacks
+  - acceptable if it keeps the command loop fast
+
+- **Chromium-based runtime**
+  - fallback if site compatibility requires it
+  - risk: too heavy for the product thesis
+
+The backend is not the product.
+Do not become attached to an implementation that prevents AgentFox from being meaningfully lighter/faster than existing tools.
+
+## Practical Rule For Every Feature
+
+For each addition, ask:
+
+1. Does this reduce or increase command overhead?
+2. Does this improve the agent loop directly?
+3. Does this push AgentFox toward being a true browser for agents, or toward being another automation wrapper?
+
+If the answer to 3 is the second one, stop and correct course.
+
+## First Real Milestone
+
+A real early milestone is not just “page title prints.”
+
+A real milestone is this:
 
 ```bash
-# Create workspace with two crates
-cd /home/maen/Builds/AgentFox
-
-# CLI crate
-cargo new --bin afox
-
-# Daemon crate  
-cargo new --bin afoxd
+afox open https://example.com
+afox snap
+afox text e1
+afox click e2
 ```
 
-3. **Pick your browser backend:**
-   
-   **Option A: WebKit (recommended for MVP)**
-   - Use `webkit2gtk` crate with `--headless` flag
-   - Pro: Lightweight, proven, works well
-   - Con: GTK dependency on Linux
-   
-   **Option B: Chromium (heavier but reliable)**
-   - Use `headless` Chrome via subprocess
-   - Pro: Chrome works everywhere
-   - Con: ~450MB memory, slow startup
+with:
 
-   **Start with A** — WebKit is faster and lighter.
+- one persistent daemon
+- one persistent browser session
+- semantic output
+- working interaction
 
-4. **Build incrementally:**
-   - First: Get a URL to load and return page title
-   - Second: Extract clickable elements
-   - Third: Implement click, fill, eval
-   - Fourth: Add semantic tree output
+## Definition Of “On Track”
 
-5. **Test early and often:**
-   - Test with: Google, Hacker News, a login page
-   - Verify click actually works (not just returns "ok")
-   - Check memory usage: should be < 200MB total
+The build is on track only if:
 
----
+- the command interface feels shell-native
+- the browser session persists between commands
+- interaction is real, not simulated loosely
+- the data returned is semantic and agent-usable
+- latency and memory are treated as product requirements from the start
 
-## Your First Target
+## Final Reminder
 
-Get this working first:
+The point is not to prove that browser automation from a CLI is possible.
 
-```rust
-// Pseudocode - make it real
-fn main() {
-    let browser = Browser::new_headless();
-    browser.navigate("https://example.com");
-    let title = browser.title();
-    println!("Page title: {}", title);
-}
-```
-
-If you can do that, everything else is incremental.
-
----
-
-**Go build. Ship the MVP first. Polish later.**
+The point is to build a browser runtime that agents can use directly, faster and lighter than the current generation of browser automation tools.

@@ -1,56 +1,99 @@
 # AgentFox — Project Specification
 
-> **Status**: MVP Build
-> **Goal**: A working lightweight browser CLI that AI agents can use
+> Status: Product Definition
+> Goal: Build a browser for agents, not another browser automation wrapper
 
----
+## 1. Product Definition
 
-## 1. What is AgentFox?
+**AgentFox (`afox`)** is a CLI-accessible browser runtime for AI agents.
 
-**AgentFox (afox)** is a CLI tool that gives AI agents the ability to browse the web, interact with websites, click buttons, fill forms, and extract data — but way faster and lighter than existing tools like Puppeteer or Playwright.
+It should let an agent browse and interact with the web through fast terminal commands while keeping browser state alive between commands.
 
-It works like this:
+This is the target experience:
 
-```
-AI Agent
-    ↓ (shell command)
-afox open https://google.com
-    ↓ (IPC)
-Afox Daemon (running in background)
-    ↓
-Browser Engine (headless)
-    ↓
-Result returned to agent
+```bash
+afox search "google.com"
+afox open https://news.ycombinator.com
+afox snap
+afox click e2
+afox fill e7 "rust webkit"
+afox text e4
 ```
 
----
+This is not meant to feel like Playwright code translated into shell commands.
+It is meant to feel like a real browser surface designed for agents.
 
-## 2. Why This Exists
+## 2. Product Goal
 
-- **Puppeteer/Playwright are too heavy** — They run full Chrome, use ~450MB+ memory per instance
-- **Agents don't need visual rendering** — They just need DOM access, JS execution, and interaction
-- **Speed matters** — Agents make hundreds of requests; slow browser tools kill productivity
-- **CLI feel** — Agents should call it like they call `curl` or `wget`
+The goal is to make web use by AI agents:
 
----
+- faster than mainstream browser automation stacks
+- lighter on memory and CPU
+- easier to use from a shell loop
+- semantically readable by an LLM or agent runtime
 
-## 3. MVP Scope
+The main thing being optimized is the repeated cycle:
 
-### Commands to Build
+1. open or search
+2. inspect
+3. act
+4. inspect again
+5. continue
 
-| Command | Description |
-|---------|-------------|
-| `afox open <url>` | Navigate to a URL |
-| `afox snap` | Get a semantic tree of the current page |
-| `afox click <element-id>` | Click an element by ID |
-| `afox fill <element-id> <text>` | Fill an input field |
-| `afox text <element-id>` | Get text content of an element |
-| `afox eval <js-code>` | Run JavaScript in page context |
-| `afox quit` | Shutdown the daemon |
+If each loop is slow or heavy, the product fails even if the commands technically work.
 
-### What "Snap" Returns
+## 3. What AgentFox Is Not
 
-A semantic tree, NOT raw HTML:
+AgentFox is not:
+
+- a browser test framework
+- a Puppeteer clone
+- a Playwright clone
+- a generic automation SDK with a CLI layer
+- just `curl` plus some DOM helpers
+
+If the implementation starts drifting toward “browser automation tool with a command wrapper,” it is moving away from the product.
+
+## 4. Required User Experience
+
+An agent should be able to:
+
+- open a site
+- inspect a semantic page representation
+- address meaningful page elements by stable ids
+- click links and buttons
+- fill inputs and textareas
+- read targeted text from the page
+- execute JS when needed as an escape hatch
+- continue interaction in the same live session
+
+The interface should be:
+
+- command-oriented
+- low-latency
+- machine-readable
+- predictable
+
+## 5. MVP Scope
+
+### Required Commands
+
+| Command | Purpose |
+|---|---|
+| `afox search <query>` | Open or resolve a destination using a browser-aware flow |
+| `afox open <url>` | Navigate current session to a URL |
+| `afox snap` | Return semantic page state |
+| `afox text <element-id>` | Return readable text/value for one element |
+| `afox click <element-id>` | Trigger realistic click interaction |
+| `afox fill <element-id> <text>` | Fill an input-like field |
+| `afox eval <js>` | Escape hatch for page-context JS |
+| `afox quit` | Stop daemon |
+
+### Required `snap` Format
+
+The output must be semantic and compact, not raw HTML.
+
+Example:
 
 ```json
 {
@@ -58,17 +101,26 @@ A semantic tree, NOT raw HTML:
   "title": "Example Domain",
   "elements": [
     {"id": "e1", "role": "heading", "text": "Example Domain"},
-    {"id": "e2", "role": "link", "text": "More information...", "href": "https://www.iana.org/-example"},
-    {"id": "e3", "role": "paragraph", "text": "This domain is for use in illustrative examples..."}
+    {"id": "e2", "role": "paragraph", "text": "This domain is for use in documentation examples..."},
+    {"id": "e3", "role": "link", "text": "Learn more", "href": "https://iana.org/domains/example"}
   ]
 }
 ```
 
-**Why semantic?** Because raw HTML is useless to an LLM. This format is readable, actionable, and small (~90-95% smaller than raw HTML).
+The semantic layer exists because agents reason better over:
 
-### What "Click" Does
+- role
+- text
+- href/value/state
+- stable element ids
 
-It fires the **full event sequence** that real browsers fire (not just `click`):
+than over raw DOM or HTML dumps.
+
+### Required Click Behavior
+
+Click must behave like a real browser interaction path, not a toy event dispatch.
+
+At minimum it should cover the normal event sequence expected by modern apps:
 
 1. `pointerdown`
 2. `mousedown`
@@ -76,160 +128,120 @@ It fires the **full event sequence** that real browsers fire (not just `click`):
 4. `mouseup`
 5. `click`
 
-This ensures React/Vue/Angular apps don't break.
+If a framework-backed app breaks under click, AgentFox is not yet good enough.
 
----
+## 6. MVP Success Criteria
 
-## 4. Technical Design
+The MVP is done only when all of these are true:
 
-### Stack
+- `afox` commands operate against a persistent daemon-backed browser session
+- command output is useful to an LLM without postprocessing raw HTML
+- `open`, `snap`, `text`, `click`, and `fill` work on real sites, not just toy pages
+- command-to-command interaction is fast because browser state is reused
+- memory use is clearly below mainstream browser automation workflows on the same machine
+- the system feels like a browser tool for agents, not a repackaged test framework
 
-- **CLI**: Rust (single binary, no dependencies)
-- **Daemon**: Rust with tokio (async, stays alive)
-- **Browser Backend**: WebKit2 via `webkit2gtk` (headless) — lightweight, proven
-- **IPC**: Unix socket with JSON messages
+## 7. Performance Requirements
 
-### Project Structure
+Performance is part of the product, not a later optimization pass.
 
-```
-AgentFox/
-├── cli/
-│   ├── Cargo.toml
-│   └── src/main.rs       # CLI entry point
-├── daemon/
-│   ├── Cargo.toml
-│   └── src/
-│       └── main.rs       # Daemon entry point
-│       └── browser.rs    # Browser wrapper
-│       └── command.rs    # Command handlers
-└── README.md
-```
+Targets:
 
-### Daemon Behavior
+- no cold browser spawn on every command
+- warm command execution should feel near-instant where possible
+- keep memory low enough for low-spec machines
+- benchmark against Puppeteer/Playwright-style workflows, not against static fetch tools
 
-1. Starts on first CLI call (or manual start)
-2. Creates a Unix socket at `/tmp/afox.sock`
-3. Waits for commands, processes them, returns JSON
-4. Can handle multiple browser contexts (future)
-5. Logs to `/tmp/afox.log` for debugging
+You are not finished when the commands work.
+You are finished when they work with the right performance profile.
 
-### CLI Behavior
+## 8. Architecture
 
-1. Parses command-line args
-2. Connects to daemon socket
-3. Sends JSON command
-4. Prints result to stdout
-5. Exits (no daemon needed in same process)
-
----
-
-## 5. Build Requirements
-
-### System Dependencies (Ubuntu/Debian)
-
-```bash
-# Install WebKit and dependencies
-sudo apt install libwebkit2gtk-4.1-dev libssl-dev libsoup-3.0-dev
-
-# Install Rust (if not installed)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```text
+Agent
+  -> afox CLI
+  -> AgentFox daemon
+  -> browser engine
 ```
 
-### Build Commands
+### CLI Responsibilities
 
-```bash
-# Build daemon
-cd daemon && cargo build --release
+- parse command arguments
+- connect to daemon quickly
+- print structured results
+- remain thin
 
-# Build CLI
-cd cli && cargo build --release
+### Daemon Responsibilities
 
-# Or build both with Makefile (create one)
-```
+- keep browser runtime alive
+- maintain current session/page state
+- map stable command ids to live page elements
+- execute commands with minimal overhead
+- support future contexts/sessions
 
-### Run It
+### Browser Engine Responsibilities
 
-```bash
-# Start daemon (background)
-./target/release/afoxd &
+- load and execute real web apps
+- maintain DOM/JS state across commands
+- support navigation and interaction
+- stay as lightweight as possible
 
-# Use it
-./target/release/afox open https://example.com
-./target/release/afox snap
-./target/release/afox click e2
+## 9. Backend Strategy
 
-# Kill daemon
-./target/release/afox quit
-```
+The browser backend is a means to an end.
 
----
+Possible options:
 
-## 6. Error Handling
+- WebKitGTK
+- embedded WebKit-style runtime
+- Chromium-derived runtime if unavoidable
+- a custom lighter engine path later
 
-- If daemon isn't running, CLI starts it automatically
-- Invalid element IDs return clear error: `"Element 'e5' not found"`
-- Network errors return: `"Failed to load: <url> - <error>"`
-- Timeout after 30 seconds for any page operation
+Selection criteria:
 
----
+- warm interaction latency
+- memory footprint
+- reliability on modern sites
+- ease of keeping persistent browser state
 
-## 7. Out of Scope (For Now)
+Important:
 
-These come AFTER the MVP works:
+- a temporary backend is acceptable for bootstrapping
+- a backend that undermines the performance thesis should not become permanent by inertia
 
-- Multiple contexts (session isolation)
-- Session save/load (cookies, localStorage)
-- Network interception
-- Screenshots
-- Chrome fallback
-- Tests, CI/CD, packaging
+## 10. Build Order
 
----
+If rebuilding from scratch, do it in this order:
 
-## 8. Success Criteria
+1. Initialize repo and Rust workspace
+2. Define shared command/response protocol
+3. Implement daemon and persistent command transport
+4. Prove a live browser session can stay alive across commands
+5. Implement `open`
+6. Implement semantic `snap`
+7. Implement stable element addressing
+8. Implement `text`
+9. Implement `click`
+10. Implement `fill`
+11. Add `search`
+12. Benchmark latency and memory
+13. Optimize bottlenecks before adding non-essential features
 
-The MVP is done when:
+## 11. Out of Scope Until Core Speed Is Proven
 
-- [ ] `afox open <url>` loads a page and returns success
-- [ ] `afox snap` returns a semantic tree with clickable element IDs
-- [ ] `afox click eN` actually clicks things (links, buttons work)
-- [ ] `afox fill eN "text"` fills input fields
-- [ ] Works on low-spec hardware (< 200MB RAM for daemon + browser)
-- [ ] Each command responds in < 2 seconds
+Do not prioritize these before the core interaction loop is fast and solid:
 
----
+- screenshots
+- visual diffing
+- network interception
+- full test framework APIs
+- large SDK surfaces
+- CI polish
+- packaging polish
+- browser-specific bells and whistles
 
-## 9. Example Session
+## 12. Key Build Rule
 
-```bash
-$ afox open https://news.ycombinator.com
-{"status": "ok", "url": "https://news.ycombinator.com", "title": "Hacker News"}
+When uncertain, choose the option that better supports this statement:
 
-$ afox snap
-{
-  "url": "https://news.ycombinator.com",
-  "title": "Hacker News",
-  "elements": [
-    {"id": "e1", "role": "heading", "text": "Hacker News"},
-    {"id": "e2", "role": "link", "text": "new", "href": "..."},
-    {"id": "e3", "role": "link", "text": "past", "href": "..."},
-    {"id": "e4", "role": "link", "text": "Ask HN", "href": "..."},
-    {"id": "e5", "role": "link", "text": "Show HN", "href": "..."},
-    ...
-  ]
-}
-
-$ afox click e2   # Click "new" link
-{"status": "ok", "url": "https://news.ycombinator.com/new"}
-
-$ afox snap
-{
-  "url": "https://news.ycombinator.com/new",
-  "title": "New Stories | Hacker News",
-  "elements": [...]
-}
-```
-
----
-
-**Ready to build. Start with getting a headless browser to load a URL and return content. Everything else builds on that.**
+**AgentFox is a fast, lightweight, persistent browser runtime for AI agents, exposed as a CLI, designed to make agent browsing dramatically lighter and faster than existing browser automation tools.**
