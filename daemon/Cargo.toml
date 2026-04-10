@@ -1,7 +1,11 @@
 [package]
 name = "afoxd"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Persistent browser daemon for the AgentFox runtime."
+repository.workspace = true
 
 [dependencies]
 agentfox-protocol = { path = "../protocol" }
