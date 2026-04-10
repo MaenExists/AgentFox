@@ -8,7 +8,7 @@ While traditional browsers are built for humans, and automation frameworks (Pupp
 
 ## ⚡ Why AgentFox?
 
-*   **Fast as fuck:** No cold starts. The daemon (`afoxd`) keeps the browser "hot" in the background. Commands execute instantly over a local Unix socket.
+*   **Faster than existing tools:** No cold starts. The daemon (`afoxd`) keeps the browser "hot" in the background. Commands execute instantly over a local Unix socket.
 *   **Persistent Session:** Navigate, click, and browse across independent CLI calls. The browser maintains full session, cookie, and JS state.
 *   **Agent-Native Snapshots:** `afox snap` provides a clean, semantic JSON tree of interactive elements. Your agent gets exactly what it needs to reason, not a 1MB HTML dump.
 *   **Minimal Overhead:** Built with Rust and WebKitGTK. It's significantly lighter and faster than any Chromium-based solution.
