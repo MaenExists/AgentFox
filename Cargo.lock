@@ -17,6 +17,7 @@ dependencies = [
  "agentfox-protocol",
  "glib",
  "gtk",
+ "javascriptcore-rs",
  "serde_json",
  "webkit2gtk",
 ]

@@ -6,6 +6,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::process::ExitCode;
 
 use agentfox_protocol::{LOG_PATH, Request, Response, SOCKET_PATH};
+use browser::Browser;
 
 fn main() -> ExitCode {
     match run() {
@@ -18,6 +19,8 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), String> {
+    let browser = Browser::new()?;
+
     if fs::metadata(SOCKET_PATH).is_ok() {
         fs::remove_file(SOCKET_PATH).map_err(|err| format!("failed to remove stale socket: {err}"))?;
     }
@@ -34,7 +37,7 @@ fn run() -> Result<(), String> {
             }
         };
 
-        let should_quit = handle_client(stream)?;
+        let should_quit = handle_client(stream, &browser)?;
         if should_quit {
             break;
         }
@@ -45,7 +48,7 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
-fn handle_client(mut stream: UnixStream) -> Result<bool, String> {
+fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, String> {
     let mut line = String::new();
     {
         let mut reader = BufReader::new(&stream);
@@ -60,10 +63,20 @@ fn handle_client(mut stream: UnixStream) -> Result<bool, String> {
     let (response, should_quit) = match request {
         Request::Ping => (Response::ok_message("pong"), false),
         Request::Quit => (Response::ok_message("shutting down"), true),
-        Request::Open { url } => (
-            Response::ok_message(format!("open not implemented yet: {url}")),
-            false,
-        ),
+        Request::Open { url } => match browser.open(&url) {
+            Ok(page) => (
+                Response::Ok {
+                    message: None,
+                    url: Some(page.url),
+                    title: Some(page.title),
+                    text: None,
+                    result: None,
+                    elements: None,
+                },
+                false,
+            ),
+            Err(error) => (Response::error(error), false),
+        },
         Request::Snap => (Response::error("snap not implemented yet"), false),
         Request::Click { .. } => (Response::error("click not implemented yet"), false),
         Request::Fill { .. } => (Response::error("fill not implemented yet"), false),
