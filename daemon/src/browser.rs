@@ -27,23 +27,6 @@ pub struct Snapshot {
     pub elements: Vec<SemanticNode>,
 }
 
-#[derive(Debug, Deserialize)]
-struct SnapshotPayload {
-    url: String,
-    title: String,
-    elements: Vec<SnapshotElement>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SnapshotElement {
-    id: String,
-    role: String,
-    text: Option<String>,
-    href: Option<String>,
-    value: Option<String>,
-    selector: String,
-}
-
 impl Browser {
     pub fn new() -> Result<Self, String> {
         gtk::init().map_err(|err| format!("failed to initialize gtk: {err}"))?;
@@ -116,17 +99,16 @@ impl Browser {
     }
 
     pub fn click(&self, element_id: &str) -> Result<PageInfo, String> {
-        let selector = self.selector_for(element_id)?;
-        let selector = serde_json::to_string(&selector)
-            .map_err(|error| format!("failed to encode selector: {error}"))?;
+        let element_id = serde_json::to_string(element_id)
+            .map_err(|error| format!("failed to encode element_id: {error}"))?;
 
         self.eval(&format!(
             r#"
             (() => {{
-              const selector = {selector};
-              const el = document.querySelector(selector);
+              const id = {element_id};
+              const el = document.querySelector(`[data-afox-id="${{id}}"]`);
               if (!el) {{
-                throw new Error(`Element for selector '${{selector}}' not found`);
+                throw new Error(`Element with id '${{id}}' not found`);
               }}
               const eventInit = {{ bubbles: true, cancelable: true, composed: true, view: window }};
               const down = window.PointerEvent || window.MouseEvent;
@@ -144,7 +126,6 @@ impl Browser {
         self.pump_for(Duration::from_millis(300));
         if self.webview.is_loading() {
             self.wait_for_finish(Duration::from_secs(10))?;
-            self.selectors.borrow_mut().clear();
         }
         self.page_info()
     }
@@ -250,30 +231,10 @@ impl Browser {
               };
 
               const textFor = (el) => {
-                const direct = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
-                if (direct) return direct;
-                if ("value" in el && typeof el.value === "string") {
-                  return el.value.trim();
+                if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") {
+                   return el.value ? el.value.trim() : "";
                 }
-                return "";
-              };
-
-              const cssPath = (el) => {
-                const segments = [];
-                let current = el;
-                while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body) {
-                  const tag = current.tagName.toLowerCase();
-                  let index = 1;
-                  let sibling = current.previousElementSibling;
-                  while (sibling) {
-                    if (sibling.tagName === current.tagName) index += 1;
-                    sibling = sibling.previousElementSibling;
-                  }
-                  segments.unshift(`${tag}:nth-of-type(${index})`);
-                  current = current.parentElement;
-                }
-                segments.unshift("body");
-                return segments.join(" > ");
+                return (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
               };
 
               const candidates = Array.from(
@@ -283,73 +244,99 @@ impl Browser {
               const elements = [];
               for (const el of candidates) {
                 if (!(el instanceof HTMLElement)) continue;
-                const style = window.getComputedStyle(el);
+                
+                // Fast visibility check
                 const rect = el.getBoundingClientRect();
-                if (style.display === "none" || style.visibility === "hidden") continue;
-                if (rect.width === 0 && rect.height === 0) continue;
+                if (rect.width === 0 || rect.height === 0) continue;
+                
+                // Only compute style if rect is non-zero
+                const style = window.getComputedStyle(el);
+                if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
 
                 if (!el.dataset.afoxId) {
                   el.dataset.afoxId = `e${window.__afoxNextId++}`;
                 }
 
+                const id = el.dataset.afoxId;
                 const text = textFor(el);
-                const href = el instanceof HTMLAnchorElement ? el.href : null;
-                const value = "value" in el && typeof el.value === "string" ? el.value : null;
+                const role = inferRole(el);
+
+                // Pruning: skip generic paragraphs or labels with no text
+                if ((role === "paragraph" || role === "label") && !text) continue;
+
                 elements.push({
-                  id: el.dataset.afoxId,
-                  role: inferRole(el),
-                  text: text || null,
-                  href: href || null,
-                  value: value || null,
-                  selector: cssPath(el)
+                  i: id,
+                  r: role,
+                  t: text || null,
+                  h: el instanceof HTMLAnchorElement ? el.href : null,
+                  v: "value" in el ? el.value : null
                 });
               }
 
               return {
-                url: window.location.href,
-                title: document.title,
-                elements
+                u: window.location.href,
+                t: document.title,
+                e: elements
               };
             })()
             "#,
         )?;
 
-        let payload: SnapshotPayload =
-            serde_json::from_value(value).map_err(|error| format!("failed to decode snapshot: {error}"))?;
+        // Map compact keys back to SnapshotPayload
+        #[derive(Debug, Deserialize)]
+        struct CompactSnapshot {
+            u: String,
+            t: String,
+            e: Vec<CompactElement>,
+        }
+        #[derive(Debug, Deserialize)]
+        struct CompactElement {
+            i: String,
+            r: String,
+            t: Option<String>,
+            h: Option<String>,
+            v: Option<String>,
+        }
+
+        let compact: CompactSnapshot =
+            serde_json::from_value(value).map_err(|error| format!("failed to decode compact snapshot: {error}"))?;
+        
         let mut selectors = self.selectors.borrow_mut();
         selectors.clear();
-        let elements = payload
-            .elements
+        
+        let elements = compact
+            .e
             .into_iter()
             .map(|element| {
-                selectors.insert(element.id.clone(), element.selector);
+                // Selector is now blazingly fast: just the data attribute
+                selectors.insert(element.i.clone(), format!("[data-afox-id=\"{}\"]", element.i));
                 SemanticNode {
-                    id: element.id,
-                    role: element.role,
-                    text: element.text,
-                    href: element.href,
-                    value: element.value,
+                    id: element.i,
+                    role: element.r,
+                    text: element.t,
+                    href: element.h,
+                    value: element.v,
                 }
             })
             .collect();
+
         Ok(Snapshot {
-            url: payload.url,
-            title: payload.title,
+            url: compact.u,
+            title: compact.t,
             elements,
         })
     }
 
     pub fn text(&self, element_id: &str) -> Result<String, String> {
-        let selector = self.selector_for(element_id)?;
-        let selector = serde_json::to_string(&selector)
-            .map_err(|error| format!("failed to encode selector: {error}"))?;
+        let element_id = serde_json::to_string(element_id)
+            .map_err(|error| format!("failed to encode element_id: {error}"))?;
         self.evaluate_string(&format!(
             r#"
             (() => {{
-              const selector = {selector};
-              const el = document.querySelector(selector);
+              const id = {element_id};
+              const el = document.querySelector(`[data-afox-id="${{id}}"]`);
               if (!el) {{
-                throw new Error(`Element for selector '${{selector}}' not found`);
+                throw new Error(`Element with id '${{id}}' not found`);
               }}
               if ("value" in el && typeof el.value === "string" && el.value.trim()) {{
                 return el.value;
