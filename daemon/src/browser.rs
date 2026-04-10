@@ -3,7 +3,9 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use glib::MainLoop;
+use agentfox_protocol::SemanticNode;
 use javascriptcore::ValueExt;
+use serde::Deserialize;
 use serde_json::Value;
 use gtk::prelude::*;
 use webkit2gtk::{LoadEvent, TLSErrorsPolicy, WebContext, WebContextExt, WebView, WebViewExt};
@@ -15,6 +17,19 @@ pub struct Browser {
 pub struct PageInfo {
     pub url: String,
     pub title: String,
+}
+
+pub struct Snapshot {
+    pub url: String,
+    pub title: String,
+    pub elements: Vec<SemanticNode>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SnapshotPayload {
+    url: String,
+    title: String,
+    elements: Vec<SemanticNode>,
 }
 
 impl Browser {
@@ -119,6 +134,85 @@ impl Browser {
             .borrow_mut()
             .take()
             .unwrap_or_else(|| Err("javascript evaluation ended without a result".to_string()))
+    }
+
+    pub fn snap(&self) -> Result<Snapshot, String> {
+        let value = self.eval(
+            r#"
+            (() => {
+              if (!window.__afoxNextId) {
+                window.__afoxNextId = 1;
+              }
+
+              const inferRole = (el) => {
+                const tag = el.tagName.toLowerCase();
+                if (tag === "a") return "link";
+                if (tag === "button") return "button";
+                if (tag === "input") {
+                  const type = (el.getAttribute("type") || "text").toLowerCase();
+                  return type === "submit" || type === "button" ? "button" : "input";
+                }
+                if (tag === "textarea") return "textbox";
+                if (tag === "select") return "select";
+                if (tag === "label") return "label";
+                if (/^h[1-6]$/.test(tag)) return "heading";
+                if (tag === "p") return "paragraph";
+                return el.getAttribute("role") || tag;
+              };
+
+              const textFor = (el) => {
+                const direct = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+                if (direct) return direct;
+                if ("value" in el && typeof el.value === "string") {
+                  return el.value.trim();
+                }
+                return "";
+              };
+
+              const candidates = Array.from(
+                document.querySelectorAll("a, button, input, textarea, select, label, h1, h2, h3, h4, h5, h6, p, [role]")
+              );
+
+              const elements = [];
+              for (const el of candidates) {
+                if (!(el instanceof HTMLElement)) continue;
+                const style = window.getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                if (style.display === "none" || style.visibility === "hidden") continue;
+                if (rect.width === 0 && rect.height === 0) continue;
+
+                if (!el.dataset.afoxId) {
+                  el.dataset.afoxId = `e${window.__afoxNextId++}`;
+                }
+
+                const text = textFor(el);
+                const href = el instanceof HTMLAnchorElement ? el.href : null;
+                const value = "value" in el && typeof el.value === "string" ? el.value : null;
+                elements.push({
+                  id: el.dataset.afoxId,
+                  role: inferRole(el),
+                  text: text || null,
+                  href: href || null,
+                  value: value || null
+                });
+              }
+
+              return {
+                url: window.location.href,
+                title: document.title,
+                elements
+              };
+            })()
+            "#,
+        )?;
+
+        let payload: SnapshotPayload =
+            serde_json::from_value(value).map_err(|error| format!("failed to decode snapshot: {error}"))?;
+        Ok(Snapshot {
+            url: payload.url,
+            title: payload.title,
+            elements: payload.elements,
+        })
     }
 
     fn evaluate_string(&self, script: &str) -> Result<String, String> {

@@ -77,7 +77,20 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
             ),
             Err(error) => (Response::error(error), false),
         },
-        Request::Snap => (Response::error("snap not implemented yet"), false),
+        Request::Snap => match browser.snap() {
+            Ok(snapshot) => (
+                Response::Ok {
+                    message: None,
+                    url: Some(snapshot.url),
+                    title: Some(snapshot.title),
+                    text: None,
+                    result: None,
+                    elements: Some(snapshot.elements),
+                },
+                false,
+            ),
+            Err(error) => (Response::error(error), false),
+        },
         Request::Click { .. } => (Response::error("click not implemented yet"), false),
         Request::Fill { .. } => (Response::error("fill not implemented yet"), false),
         Request::Text { .. } => (Response::error("text not implemented yet"), false),
