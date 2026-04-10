@@ -81,7 +81,20 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
         Request::Click { .. } => (Response::error("click not implemented yet"), false),
         Request::Fill { .. } => (Response::error("fill not implemented yet"), false),
         Request::Text { .. } => (Response::error("text not implemented yet"), false),
-        Request::Eval { .. } => (Response::error("eval not implemented yet"), false),
+        Request::Eval { code } => match browser.eval(&code) {
+            Ok(result) => (
+                Response::Ok {
+                    message: None,
+                    url: None,
+                    title: None,
+                    text: None,
+                    result: Some(result),
+                    elements: None,
+                },
+                false,
+            ),
+            Err(error) => (Response::error(error), false),
+        },
     };
 
     let payload = serde_json::to_string(&response).map_err(|err| format!("failed to encode response: {err}"))?;

@@ -4,8 +4,9 @@ use std::time::Duration;
 
 use glib::MainLoop;
 use javascriptcore::ValueExt;
+use serde_json::Value;
 use gtk::prelude::*;
-use webkit2gtk::{LoadEvent, WebView, WebViewExt};
+use webkit2gtk::{LoadEvent, TLSErrorsPolicy, WebContext, WebContextExt, WebView, WebViewExt};
 
 pub struct Browser {
     webview: WebView,
@@ -19,7 +20,9 @@ pub struct PageInfo {
 impl Browser {
     pub fn new() -> Result<Self, String> {
         gtk::init().map_err(|err| format!("failed to initialize gtk: {err}"))?;
-        let webview = WebView::new();
+        let context = WebContext::default().ok_or_else(|| "failed to create web context".to_string())?;
+        context.set_tls_errors_policy(TLSErrorsPolicy::Ignore);
+        let webview = WebView::builder().web_context(&context).build();
         Ok(Self { webview })
     }
 
@@ -74,9 +77,9 @@ impl Browser {
         }
     }
 
-    fn evaluate_string(&self, script: &str) -> Result<String, String> {
+    pub fn eval(&self, script: &str) -> Result<Value, String> {
         let loop_ = MainLoop::new(None, false);
-        let result: Rc<RefCell<Option<Result<String, String>>>> = Rc::new(RefCell::new(None));
+        let result: Rc<RefCell<Option<Result<Value, String>>>> = Rc::new(RefCell::new(None));
 
         let completed = result.clone();
         let completed_loop = loop_.clone();
@@ -84,9 +87,15 @@ impl Browser {
             let resolved = value
                 .map_err(|error| error.to_string())
                 .and_then(|js| {
-                    js.js_value()
-                        .map(|inner| inner.to_str().to_string())
-                        .ok_or_else(|| "javascript returned no value".to_string())
+                    let js_value = js
+                        .js_value()
+                        .ok_or_else(|| "javascript returned no value".to_string())?;
+                    let json = js_value
+                        .to_json(0)
+                        .map(|raw| raw.to_string())
+                        .unwrap_or_else(|| format!("{:?}", js_value.to_str()));
+                    serde_json::from_str(&json)
+                        .map_err(|error| format!("failed to parse javascript result: {error}"))
                 });
             completed.borrow_mut().replace(resolved);
             completed_loop.quit();
@@ -110,5 +119,12 @@ impl Browser {
             .borrow_mut()
             .take()
             .unwrap_or_else(|| Err("javascript evaluation ended without a result".to_string()))
+    }
+
+    fn evaluate_string(&self, script: &str) -> Result<String, String> {
+        match self.eval(script)? {
+            Value::String(value) => Ok(value),
+            other => Ok(other.to_string()),
+        }
     }
 }
