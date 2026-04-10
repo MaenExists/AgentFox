@@ -5,9 +5,9 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
-authors = ["AgentFox Contributors"]
-description = "A fast, lightweight, daemon-backed browser runtime for AI agents."
-repository = "https://github.com/user/AgentFox"
+authors = ["MaenExists"]
+description = "A persistent, lightweight browser runtime for AI agents."
+repository = "https://github.com/MaenExists/AgentFox"
 license = "MIT"
 keywords = ["agent", "browser", "cli", "webkit", "runtime"]
 categories = ["command-line-utilities", "web-programming"]
