@@ -32,13 +32,15 @@ fn run() -> Result<(), String> {
 
     let request = parse_request(args)?;
     
-    let stream = UnixStream::connect(SOCKET_PATH).map_err(|err| {
-        if err.kind() == std::io::ErrorKind::NotFound {
-            "afoxd daemon is not running. Start it with 'afoxd &'".to_string()
-        } else {
-            format!("failed to connect to daemon: {err}")
+    let stream = match connect_with_retry(3) {
+        Ok(s) => s,
+        Err(_) => {
+            spawn_daemon()?;
+            connect_with_retry(20).map_err(|err| {
+                format!("afoxd failed to start or is taking too long: {err}")
+            })?
         }
-    })?;
+    };
 
     let mut stream = stream;
     let payload = serde_json::to_string(&request).map_err(|err| format!("failed to encode request: {err}"))?;
@@ -83,6 +85,47 @@ fn parse_request(args: Vec<String>) -> Result<Request, String> {
     }
 }
 
+fn connect_with_retry(retries: usize) -> Result<UnixStream, String> {
+    for i in 0..retries {
+        match UnixStream::connect(SOCKET_PATH) {
+            Ok(stream) => return Ok(stream),
+            Err(_) => {
+                if i < retries - 1 {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        }
+    }
+    Err(format!("could not connect to {}", SOCKET_PATH))
+}
+
+fn spawn_daemon() -> Result<(), String> {
+    use std::process::{Command, Stdio};
+
+    let current_exe = env::current_exe().ok();
+    let afoxd_path = current_exe
+        .as_ref()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("afoxd"))
+        .filter(|p| p.exists())
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "afoxd".to_string());
+
+    Command::new(afoxd_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|err| {
+            format!(
+                "failed to auto-start afoxd daemon. error: {}",
+                err
+            )
+        })?;
+
+    Ok(())
+}
+
 fn usage() -> String {
     format!(
         "AgentFox CLI (afox) v{}\n\
@@ -102,7 +145,7 @@ fn usage() -> String {
         FLAGS:\n\
           -h, --help          Show this help message\n\
           -v, --version       Show version information\n\n\
-        The daemon (afoxd) must be running for these commands to work.",
+        The daemon (afoxd) is automatically started if not already running.",
         VERSION
     )
 }
