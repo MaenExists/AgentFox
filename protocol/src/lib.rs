@@ -7,6 +7,7 @@ pub const LOG_PATH: &str = "/tmp/afox.log";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case")]
 pub enum Request {
+    Search { query: String },
     Open { url: String },
     Snap,
     Click { element_id: String },

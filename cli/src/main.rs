@@ -40,6 +40,9 @@ fn run() -> Result<(), String> {
 
 fn parse_request(args: Vec<String>) -> Result<Request, String> {
     match args.as_slice() {
+        [command, query] if command == "search" => Ok(Request::Search {
+            query: query.clone(),
+        }),
         [command] if command == "ping" => Ok(Request::Ping),
         [command] if command == "snap" => Ok(Request::Snap),
         [command] if command == "quit" => Ok(Request::Quit),
@@ -55,8 +58,11 @@ fn parse_request(args: Vec<String>) -> Result<Request, String> {
             text: text.clone(),
         }),
         [command, code] if command == "eval" => Ok(Request::Eval { code: code.clone() }),
-        _ => Err(
-            "usage: afox <open|snap|click|fill|text|eval|ping|quit> [args]".to_string(),
-        ),
+        _ => Err(usage().to_string()),
     }
+}
+
+fn usage() -> &'static str {
+    "usage: afox <search|open|snap|click|fill|text|eval|ping|quit> [args]\n\
+     agentfox is a daemon-backed browser interface for agents"
 }
