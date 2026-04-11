@@ -203,7 +203,8 @@ impl Browser {
     }
 
     pub fn snap(&self) -> Result<Snapshot, String> {
-        self.pump_for(Duration::from_millis(500));
+        // Increase settling time for heavy dynamic sites like Google Search
+        self.pump_for(Duration::from_millis(1500));
         let value = self.eval(
             r#"
             (() => {
@@ -237,54 +238,50 @@ impl Browser {
                 return (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
               };
 
-              const candidates = Array.from(document.querySelectorAll("*"));
-
               const elements = [];
-              for (const el of candidates) {
-                if (!(el instanceof HTMLElement)) continue;
-                
+              const processNode = (node) => {
+                if (node.nodeType !== Node.ELEMENT_NODE) return;
+                const el = node;
                 const tag = el.tagName.toLowerCase();
-                if (["script", "style", "noscript", "template"].includes(tag)) continue;
+                
+                if (["script", "style", "noscript", "template", "meta", "link"].includes(tag)) return;
 
-                const rect = el.getBoundingClientRect();
                 const style = window.getComputedStyle(el);
-                if (style.display === "none" || style.visibility === "hidden") continue;
+                if (style.display === "none") return; // Keep visibility:hidden as it might be a container
 
-                const hasText = (el.innerText || el.textContent || "").trim().length > 0;
+                const text = textFor(el);
                 const isInteractive = [
                     "a", "button", "input", "textarea", "select", "label"
                   ].includes(tag) || 
                   el.hasAttribute("role") || 
                   el.hasAttribute("onclick") ||
+                  el.hasAttribute("jsaction") ||
                   style.cursor === "pointer";
                 
                 const isSemantic = [
-                    "h1", "h2", "h3", "h4", "h5", "h6", "p"
+                    "h1", "h2", "h3", "h4", "h5", "h6", "p", "article"
                   ].includes(tag);
 
-                if (!isInteractive && !isSemantic && !hasText) continue;
-                
-                // For containers, only keep them if they are interactive
-                if (!isInteractive && !isSemantic && ["div", "span", "section", "article"].includes(tag)) continue;
-
-                if (!el.dataset.afoxId) {
-                  el.dataset.afoxId = `e${window.__afoxNextId++}`;
+                if (isInteractive || isSemantic || (text.length > 0 && !["div", "span"].includes(tag))) {
+                  if (!el.dataset.afoxId) {
+                    el.dataset.afoxId = `e${window.__afoxNextId++}`;
+                  }
+                  elements.push({
+                    i: el.dataset.afoxId,
+                    r: inferRole(el),
+                    t: text || null,
+                    h: el instanceof HTMLAnchorElement ? el.href : null,
+                    v: "value" in el ? el.value : null
+                  });
                 }
 
-                const id = el.dataset.afoxId;
-                const text = textFor(el);
-                const role = inferRole(el);
+                if (el.shadowRoot) {
+                  Array.from(el.shadowRoot.childNodes).forEach(processNode);
+                }
+                Array.from(el.childNodes).forEach(processNode);
+              };
 
-                if ((role === "paragraph" || role === "label") && !text) continue;
-
-                elements.push({
-                  i: id,
-                  r: role,
-                  t: text || null,
-                  h: el instanceof HTMLAnchorElement ? el.href : null,
-                  v: "value" in el ? el.value : null
-                });
-              }
+              processNode(document.body);
 
               return {
                 u: window.location.href,
@@ -337,19 +334,75 @@ impl Browser {
     pub fn view(&self) -> Result<String, String> {
         let snapshot = self.snap()?;
         let mut md = format!("# {}\nURL: {}\n\n", snapshot.title, snapshot.url);
+        
+        let noise_patterns = [
+            "skip to", "accessibility", "feedback", "sign in", "privacy", "terms", "cookie",
+            "log in", "sign up", "help", "about", "contact", "support"
+        ];
+
+        let mut seen_urls = std::collections::HashSet::new();
+
         for el in snapshot.elements {
-            if ["html", "body", "div", "span"].contains(&el.role.as_str()) {
+            let role = el.role.as_str();
+            // Prune layout containers and overly generic roles
+            if ["html", "body", "div", "span", "section", "article", "main", "header", "footer", "nav", "paragraph"].contains(&role) {
                 continue;
             }
-            let text = el.text.as_deref().unwrap_or("");
-            match el.role.as_str() {
-                "heading" => md.push_str(&format!("## [{}] {}\n", el.id, text)),
-                "link" => md.push_str(&format!("- [{}] (link) {}: {}\n", el.id, text, el.href.as_deref().unwrap_or(""))),
-                "button" => md.push_str(&format!("- [{}] (button) {}\n", el.id, text)),
-                "input" | "textbox" => md.push_str(&format!("- [{}] ({}) value: {}\n", el.id, el.role, el.value.as_deref().unwrap_or(""))),
-                _ => if !text.is_empty() { md.push_str(&format!("- [{}] ({}) {}\n", el.id, el.role, text)) },
+
+            let text = el.text.as_deref().unwrap_or("").trim();
+            let href = el.href.as_deref().unwrap_or("").trim();
+            let value = el.value.as_deref().unwrap_or("").trim();
+
+            // Prune empty interactive elements
+            if text.is_empty() && href.is_empty() && value.is_empty() {
+                continue;
+            }
+
+            // Prune utility noise
+            let lower_text = text.to_lowercase();
+            if noise_patterns.iter().any(|p| lower_text.contains(p)) {
+                continue;
+            }
+
+            // Prune duplicate links (often seen in site logos/navs)
+            if role == "link" && !href.is_empty() && text.is_empty() {
+                if seen_urls.contains(href) {
+                    continue;
+                }
+                seen_urls.insert(href.to_string());
+            }
+
+            match role {
+                "heading" => {
+                    md.push_str(&format!("## [{}] {}\n", el.id, text));
+                }
+                "link" => {
+                    if !text.is_empty() {
+                        md.push_str(&format!("- [{}] (link) [{}]({})\n", el.id, text, href));
+                    } else {
+                        md.push_str(&format!("- [{}] (link) {}\n", el.id, href));
+                    }
+                }
+                "button" => {
+                    let label = if !text.is_empty() { text } else { "Button" };
+                    md.push_str(&format!("- [{}] <button> {} </button>\n", el.id, label));
+                }
+                "input" | "textbox" => {
+                    let label = if !text.is_empty() { format!("{}: ", text) } else { "".to_string() };
+                    md.push_str(&format!("- [{}] ({}) {}[ {} ]\n", el.id, role, label, if value.is_empty() { "..." } else { value }));
+                }
+                _ => {
+                    if !text.is_empty() {
+                        md.push_str(&format!("- [{}] ({}) {}\n", el.id, role, text));
+                    }
+                }
             }
         }
+        
+        if md.lines().count() <= 3 {
+            md.push_str("_No interactive elements discovered._\n");
+        }
+
         Ok(md)
     }
 

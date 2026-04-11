@@ -63,8 +63,30 @@ fn run() -> Result<(), String> {
     let response: Response =
         serde_json::from_str(response_line.trim()).map_err(|err| format!("failed to decode response: {err}"))?;
     
-    let pretty = serde_json::to_string_pretty(&response).map_err(|err| format!("failed to render response: {err}"))?;
-    println!("{pretty}");
+    match response {
+        Response::Ok { markdown: Some(md), .. } => {
+            println!("{md}");
+        }
+        Response::Ok { text: Some(txt), .. } => {
+            println!("{txt}");
+        }
+        Response::Ok { url: Some(url), title: Some(title), .. } => {
+            println!("## {title}\nURL: {url}");
+        }
+        Response::Ok { message: Some(msg), .. } => {
+            println!("{msg}");
+        }
+        Response::Ok { result: Some(res), .. } => {
+            println!("{}", serde_json::to_string_pretty(&res).unwrap());
+        }
+        Response::Ok { .. } => {
+            let pretty = serde_json::to_string_pretty(&response).map_err(|err| format!("failed to render response: {err}"))?;
+            println!("{pretty}");
+        }
+        Response::Error { error } => {
+            return Err(error);
+        }
+    }
     
     Ok(())
 }

@@ -8,12 +8,12 @@ While traditional browsers are for humans, and frameworks like Playwright are fo
 
 ## 🔥 Why AgentFox?
 
-*   **Fast as Fuck:** **~10ms** command latency. No cold starts.
-*   **Zero Configuration:** The daemon (`afoxd`) is automatically started by the CLI if it's not already running. It just works.
-*   **Agent-Native Snapshots:** `afox snap` returns a **Turbo-Snap**—a semantic, compressed JSON tree of interactive elements with stable IDs.
-*   **Direct-ID Selection:** High-speed interaction using `[data-afox-id]` selectors, bypassing the overhead of traditional CSS/XPath calculation.
+*   **Fast as Fuck:** **~10ms** command latency once the page is loaded. No cold starts, no overhead.
+*   **Agent-Native Snapshots:** `afox view` returns a **Clean Markdown** tree of interactive elements with stable IDs, pruned of utility noise (accessibility skips, cookie banners, etc.).
+*   **Direct-ID Selection:** High-speed interaction using `[e1]`, `[e2]` style IDs that map directly to internal DOM elements, bypassing brittle CSS selectors.
 *   **Persistent Session:** Maintain cookies, logins, and JS state across multiple independent CLI calls.
 *   **Lightweight:** Powered by Rust and WebKitGTK. Meaningfully lower resource footprint than Chromium-based stacks.
+*   **Zero Configuration:** The daemon (`afoxd`) is automatically started by the CLI if it's not already running. It just works.
 
 ---
 
@@ -39,25 +39,25 @@ No need to manually start a daemon. Just run a command.
 afox search "latest news on autonomous agents"
 ```
 
-### 2. Inspect (Turbo-Snap)
+### 2. Inspect (Agent-Friendly Markdown)
 ```bash
-afox snap
+afox view
 ```
 Returns a clean, machine-readable element tree:
-```json
-{
-  "url": "https://example.com/news",
-  "elements": [
-    {"id": "e1", "role": "heading", "text": "Agents are the future"},
-    {"id": "e2", "role": "link", "text": "Read More", "href": "/article/1"}
-  ]
-}
+```markdown
+# Google Search
+URL: https://www.google.com/search?q=...
+
+## [e10] Search Results
+- [e15] (link) [Agents are the future](https://example.com/article)
+- [e21] (input) Search: [ ... ]
+- [e25] <button> Search </button>
 ```
 
 ### 3. Act Instantly
 ```bash
-afox click e2
-afox fill e5 "agent@agentfox.dev"
+afox click e15
+afox fill e21 "agentfox vs playwright"
 ```
 
 ---
@@ -66,8 +66,9 @@ afox fill e5 "agent@agentfox.dev"
 
 | Command | Usage | Description |
 |---|---|---|
-| `search` | `afox search <q>`   | High-speed navigation (URL or query). |
-| `snap`   | `afox snap`         | Get a semantic JSON snapshot of the page. |
+| `search` | `afox search <q>`   | High-speed navigation (URL or search query). |
+| `view`   | `afox view`         | Get a clean Markdown snapshot of the page. |
+| `snap`   | `afox snap`         | Get the raw semantic JSON tree. |
 | `click`  | `afox click <id>`    | Direct-ID browser interaction. |
 | `fill`   | `afox fill <id> <v>` | Instant form input with event triggering. |
 | `text`   | `afox text <id>`     | Extract clean text content from an element. |
