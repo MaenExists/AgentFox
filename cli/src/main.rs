@@ -79,6 +79,7 @@ fn parse_request(args: Vec<String>) -> Result<Request, String> {
         "fill" if args.len() == 3 => Ok(Request::Fill { element_id: args[1].clone(), text: args[2].clone() }),
         "eval" if args.len() == 2 => Ok(Request::Eval { code: args[1].clone() }),
         "snap" => Ok(Request::Snap),
+        "view" => Ok(Request::View),
         "ping" => Ok(Request::Ping),
         "quit" => Ok(Request::Quit),
         _ => Err(format!("invalid command or arguments for '{}'. See 'afox help'.", cmd)),
@@ -136,6 +137,7 @@ fn usage() -> String {
           search <query>      Smart navigation: URL or search query\n\
           open <url>          Navigate to a specific URL\n\
           snap                Get a semantic JSON snapshot of the page\n\
+          view                Get a semantic Markdown snapshot of the page\n\
           click <id>          Perform a realistic click on an element\n\
           fill <id> <text>    Input text into a field\n\
           text <id>           Extract clean text from an element\n\

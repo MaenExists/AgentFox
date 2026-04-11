@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -13,7 +12,6 @@ use webkit2gtk::{LoadEvent, TLSErrorsPolicy, WebContext, WebContextExt, WebView,
 
 pub struct Browser {
     webview: WebView,
-    selectors: RefCell<HashMap<String, String>>,
 }
 
 pub struct PageInfo {
@@ -33,14 +31,16 @@ impl Browser {
         let context = WebContext::default().ok_or_else(|| "failed to create web context".to_string())?;
         context.set_tls_errors_policy(TLSErrorsPolicy::Ignore);
         let webview = WebView::builder().web_context(&context).build();
+        
+        // Standard high-res viewport for agents to ensure elements are visible and have dimensions
+        webview.set_size_request(1280, 1024);
+        
         Ok(Self {
             webview,
-            selectors: RefCell::new(HashMap::new()),
         })
     }
 
     pub fn open(&self, url: &str) -> Result<PageInfo, String> {
-        self.selectors.borrow_mut().clear();
         let loop_ = MainLoop::new(None, false);
         let result: Rc<RefCell<Option<Result<(), String>>>> = Rc::new(RefCell::new(None));
 
@@ -84,10 +84,7 @@ impl Browser {
         }
 
         match result.borrow_mut().take() {
-            Some(Ok(())) => Ok(PageInfo {
-                url: self.webview.uri().map(|value| value.to_string()).unwrap_or_else(|| url.to_string()),
-                title: self.evaluate_string("document.title")?.trim_matches('"').to_string(),
-            }),
+            Some(Ok(())) => self.page_info(),
             Some(Err(error)) => Err(error),
             None => Err("page load ended without a result".to_string()),
         }
@@ -131,20 +128,19 @@ impl Browser {
     }
 
     pub fn fill(&self, element_id: &str, text: &str) -> Result<(), String> {
-        let selector = self.selector_for(element_id)?;
-        let selector = serde_json::to_string(&selector)
-            .map_err(|error| format!("failed to encode selector: {error}"))?;
+        let element_id = serde_json::to_string(element_id)
+            .map_err(|error| format!("failed to encode element_id: {error}"))?;
         let text =
             serde_json::to_string(text).map_err(|error| format!("failed to encode fill text: {error}"))?;
 
         self.eval(&format!(
             r#"
             (() => {{
-              const selector = {selector};
+              const id = {element_id};
               const value = {text};
-              const el = document.querySelector(selector);
+              const el = document.querySelector(`[data-afox-id="${{id}}"]`);
               if (!el) {{
-                throw new Error(`Element for selector '${{selector}}' not found`);
+                throw new Error(`Element with id '${{id}}' not found`);
               }}
               if (!("value" in el)) {{
                 throw new Error("Target element is not fillable");
@@ -207,6 +203,7 @@ impl Browser {
     }
 
     pub fn snap(&self) -> Result<Snapshot, String> {
+        self.pump_for(Duration::from_millis(500));
         let value = self.eval(
             r#"
             (() => {
@@ -227,7 +224,10 @@ impl Browser {
                 if (tag === "label") return "label";
                 if (/^h[1-6]$/.test(tag)) return "heading";
                 if (tag === "p") return "paragraph";
-                return el.getAttribute("role") || tag;
+                const role = el.getAttribute("role");
+                if (role) return role;
+                if (el.hasAttribute("onclick") || window.getComputedStyle(el).cursor === "pointer") return "button";
+                return tag;
               };
 
               const textFor = (el) => {
@@ -237,21 +237,35 @@ impl Browser {
                 return (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
               };
 
-              const candidates = Array.from(
-                document.querySelectorAll("a, button, input, textarea, select, label, h1, h2, h3, h4, h5, h6, p, [role]")
-              );
+              const candidates = Array.from(document.querySelectorAll("*"));
 
               const elements = [];
               for (const el of candidates) {
                 if (!(el instanceof HTMLElement)) continue;
                 
-                // Fast visibility check
+                const tag = el.tagName.toLowerCase();
+                if (["script", "style", "noscript", "template"].includes(tag)) continue;
+
                 const rect = el.getBoundingClientRect();
-                if (rect.width === 0 || rect.height === 0) continue;
-                
-                // Only compute style if rect is non-zero
                 const style = window.getComputedStyle(el);
-                if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
+                if (style.display === "none" || style.visibility === "hidden") continue;
+
+                const hasText = (el.innerText || el.textContent || "").trim().length > 0;
+                const isInteractive = [
+                    "a", "button", "input", "textarea", "select", "label"
+                  ].includes(tag) || 
+                  el.hasAttribute("role") || 
+                  el.hasAttribute("onclick") ||
+                  style.cursor === "pointer";
+                
+                const isSemantic = [
+                    "h1", "h2", "h3", "h4", "h5", "h6", "p"
+                  ].includes(tag);
+
+                if (!isInteractive && !isSemantic && !hasText) continue;
+                
+                // For containers, only keep them if they are interactive
+                if (!isInteractive && !isSemantic && ["div", "span", "section", "article"].includes(tag)) continue;
 
                 if (!el.dataset.afoxId) {
                   el.dataset.afoxId = `e${window.__afoxNextId++}`;
@@ -261,7 +275,6 @@ impl Browser {
                 const text = textFor(el);
                 const role = inferRole(el);
 
-                // Pruning: skip generic paragraphs or labels with no text
                 if ((role === "paragraph" || role === "label") && !text) continue;
 
                 elements.push({
@@ -282,7 +295,6 @@ impl Browser {
             "#,
         )?;
 
-        // Map compact keys back to SnapshotPayload
         #[derive(Debug, Deserialize)]
         struct CompactSnapshot {
             u: String,
@@ -301,15 +313,10 @@ impl Browser {
         let compact: CompactSnapshot =
             serde_json::from_value(value).map_err(|error| format!("failed to decode compact snapshot: {error}"))?;
         
-        let mut selectors = self.selectors.borrow_mut();
-        selectors.clear();
-        
         let elements = compact
             .e
             .into_iter()
             .map(|element| {
-                // Selector is now blazingly fast: just the data attribute
-                selectors.insert(element.i.clone(), format!("[data-afox-id=\"{}\"]", element.i));
                 SemanticNode {
                     id: element.i,
                     role: element.r,
@@ -325,6 +332,25 @@ impl Browser {
             title: compact.t,
             elements,
         })
+    }
+
+    pub fn view(&self) -> Result<String, String> {
+        let snapshot = self.snap()?;
+        let mut md = format!("# {}\nURL: {}\n\n", snapshot.title, snapshot.url);
+        for el in snapshot.elements {
+            if ["html", "body", "div", "span"].contains(&el.role.as_str()) {
+                continue;
+            }
+            let text = el.text.as_deref().unwrap_or("");
+            match el.role.as_str() {
+                "heading" => md.push_str(&format!("## [{}] {}\n", el.id, text)),
+                "link" => md.push_str(&format!("- [{}] (link) {}: {}\n", el.id, text, el.href.as_deref().unwrap_or(""))),
+                "button" => md.push_str(&format!("- [{}] (button) {}\n", el.id, text)),
+                "input" | "textbox" => md.push_str(&format!("- [{}] ({}) value: {}\n", el.id, el.role, el.value.as_deref().unwrap_or(""))),
+                _ => if !text.is_empty() { md.push_str(&format!("- [{}] ({}) {}\n", el.id, el.role, text)) },
+            }
+        }
+        Ok(md)
     }
 
     pub fn text(&self, element_id: &str) -> Result<String, String> {
@@ -356,14 +382,6 @@ impl Browser {
                 .unwrap_or_default(),
             title: self.evaluate_string("document.title")?.trim_matches('"').to_string(),
         })
-    }
-
-    fn selector_for(&self, element_id: &str) -> Result<String, String> {
-        self.selectors
-            .borrow()
-            .get(element_id)
-            .cloned()
-            .ok_or_else(|| format!("Element '{element_id}' not found"))
     }
 
     fn pump_for(&self, duration: Duration) {
@@ -402,7 +420,7 @@ impl Browser {
             if timed_out.borrow().is_none() {
                 timed_out
                     .borrow_mut()
-                    .replace(Err("page load timed out after click".to_string()));
+                    .replace(Err("page load timed out".to_string()));
             }
             timeout_loop.quit();
         });

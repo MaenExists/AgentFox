@@ -10,6 +10,7 @@ pub enum Request {
     Search { query: String },
     Open { url: String },
     Snap,
+    View,
     Click { element_id: String },
     Fill { element_id: String, text: String },
     Text { element_id: String },
@@ -43,6 +44,8 @@ pub enum Response {
         #[serde(skip_serializing_if = "Option::is_none")]
         text: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        markdown: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         result: Option<Value>,
         #[serde(skip_serializing_if = "Option::is_none")]
         elements: Option<Vec<SemanticNode>>,
@@ -57,6 +60,7 @@ impl Response {
             url: None,
             title: None,
             text: None,
+            markdown: None,
             result: None,
             elements: None,
         }
