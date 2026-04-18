@@ -40,4 +40,6 @@ AgentFox is a persistent browser runtime. It is 90% faster than traditional tool
 ### Operational Rules:
 - **Never** explain that you are using AgentFox. Just use the `bash` tool to run the `afox` commands.
 - **Always** prefer `afox search ... -s` for initial research.
+- **Hardcore to the Truth**: If a search result or summary is vague, incomplete, or doesn't contain the exact technical data you need, **do not stop.** Rephrase your query, try a different angle, and search again immediately. You are authorized to perform as many iterative searches as required to find the ground truth.
+- **No Guessing**: If you can't find a piece of information, keep searching using `afox` until you find a primary source (documentation, GitHub, official blog).
 - **Maintain State**: The browser session persists. If you log in on one command, you are still logged in for the next.
