@@ -10,6 +10,7 @@ build:
 
 install: build
 	mkdir -p $(BINDIR)
+	rm -f $(BINDIR)/afox $(BINDIR)/afoxd
 	cp target/release/afox $(BINDIR)/afox
 	cp target/release/afoxd $(BINDIR)/afoxd
 	@echo "AgentFox installed to $(BINDIR)"

@@ -272,7 +272,7 @@ impl Browser {
                     r: inferRole(el),
                     t: text || null,
                     h: el instanceof HTMLAnchorElement ? el.href : null,
-                    v: "value" in el ? el.value : null
+                    v: "value" in el && el.value !== null && el.value !== undefined ? String(el.value) : null
                   });
                 }
 
@@ -439,25 +439,26 @@ impl Browser {
             return Err("API key is empty. Run 'afox auth <key>' to set it.".to_string());
         }
 
-        let main_content = self.evaluate_string(
-            r#"
-            (() => {
-              const selectors = [
-                'article', 'main', '[role="main"]', '.main-content', '#content', '.content', '.article'
-              ];
-              for (const s of selectors) {
-                const el = document.querySelector(s);
-                if (el && el.innerText.length > 500) return el.innerText;
-              }
-              return document.body.innerText;
-            })()
-            "#,
-        )?;
+        let snapshot = self.snap()?;
+        let mut main_content = String::new();
+        for el in snapshot.elements {
+            if let Some(text) = el.text {
+                if !text.is_empty() {
+                    main_content.push_str(&text);
+                    main_content.push('\n');
+                }
+            }
+        }
 
-        let truncated_content = if main_content.len() > 10000 {
-            format!("{}...", &main_content[..10000])
+        let trimmed = main_content.trim();
+        if trimmed.is_empty() || trimmed.len() < 50 {
+            return Ok("No readable content found on this page to summarize (it may be a blank page, a CAPTCHA, or heavily JavaScript-blocked).".to_string());
+        }
+
+        let truncated_content = if trimmed.len() > 10000 {
+            format!("{}...", &trimmed[..10000])
         } else {
-            main_content
+            trimmed.to_string()
         };
 
         let client = reqwest::blocking::Client::new();
@@ -479,7 +480,7 @@ impl Browser {
             messages: vec![
                 Message {
                     role: "system".to_string(),
-                    content: "You are a concise summarizer for an AI agent. Summarize the following web page content into 2-3 short, highly informative paragraphs. Focus on facts, data, and key actions available. Do not use filler words.".to_string(),
+                    content: "You are a concise summarizer for an AI agent. Extract the core information from the provided web page text. If the text is an article, summarize its facts and data into 2-3 short paragraphs. If it is a search engine results page, summarize the top 3-5 search results and their key takeaways. Ignore navigation menus, country lists, and UI elements. Do not complain about the format. Do not use filler words.".to_string(),
                 },
                 Message {
                     role: "user".to_string(),
@@ -602,5 +603,5 @@ fn resolve_search_target(query: &str) -> String {
     }
 
     let encoded: String = url::form_urlencoded::byte_serialize(trimmed.as_bytes()).collect();
-    format!("https://www.google.com/search?q={encoded}")
+    format!("https://html.duckduckgo.com/html/?q={encoded}")
 }
