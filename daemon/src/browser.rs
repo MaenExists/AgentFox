@@ -484,12 +484,15 @@ impl Browser {
             Your job is to read the raw text of a web page and extract the exact technical answer the user is looking for.\n\n\
             Page URL: {}\n\n\
             INSTRUCTIONS:\n\
-            1. If this is a search page, figure out what the user was searching for and provide the direct answer by synthesizing the snippets.\n\
-            2. If this is a documentation page, extract the core code blocks, API endpoints, CLI commands, and configuration details.\n\
-            3. YOU MUST OUTPUT VALID JSON ONLY. NO MARKDOWN. NO EXPLANATIONS. NO THOUGHT PROCESS.\n\n\
+            1. Analyze the content and deduce the user's implicit intent (e.g., finding an endpoint, learning a concept, reading news, finding a code example).\n\
+            2. Adapt your response length and detail to the complexity of the topic.\n\
+               - For simple facts (like API endpoints or dates): Provide a brutally concise 1-2 sentence answer.\n\
+               - For technical guides or 'how-to' questions: Provide a comprehensive, step-by-step Markdown response with code snippets (keep it under 300 words).\n\
+               - For articles/news: Provide a structured summary with bullet points highlighting key takeaways.\n\
+            3. YOU MUST OUTPUT VALID JSON ONLY. NO MARKDOWN OUTSIDE THE JSON. NO EXPLANATIONS. NO THOUGHT PROCESS.\n\n\
             JSON FORMAT:\n\
             {{\n\
-              \"direct_answer\": \"The exact technical answer, code snippet, or endpoint (keep it brutally concise).\",\n\
+              \"content\": \"The adaptive Markdown-formatted answer, guide, or summary based on the rules above.\",\n\
               \"source_urls\": [\"https://relevant-link-1\", \"https://relevant-link-2\"]\n\
             }}",
             snapshot.url
@@ -507,7 +510,7 @@ impl Browser {
                     content: format!("Here is the raw page text:\n\n{}\n\nEXTRACT ONLY THE FINAL REQUESTED DATA WITHOUT ANY EXPLANATION.", truncated_content),
                 },
             ],
-            max_tokens: 1500,
+            max_tokens: 2500,
             temperature: 0.1,
         };
 
@@ -534,12 +537,12 @@ impl Browser {
         let start = raw_text.find('{');
         let end = raw_text.rfind('}');
         
-        if let (Some(s), Some(e)) = (start, end) {
-            if s <= e {
+        if let (Some(s), Some(mut e)) = (start, end) {
+            while s <= e {
                 let json_str = &raw_text[s..=e];
                 if let Ok(parsed) = serde_json::from_str::<Value>(json_str) {
-                    if let Some(ans) = parsed.get("direct_answer").and_then(|v| v.as_str()) {
-                        final_summary.push_str(&format!("Answer: {}\n\n", ans));
+                    if let Some(ans) = parsed.get("content").and_then(|v| v.as_str()) {
+                        final_summary.push_str(&format!("{}\n\n", ans));
                     }
                     if let Some(urls) = parsed.get("source_urls").and_then(|v| v.as_array()) {
                         if !urls.is_empty() {
@@ -551,6 +554,12 @@ impl Browser {
                             }
                         }
                     }
+                    break;
+                }
+                if let Some(prev_e) = raw_text[..e].rfind('}') {
+                    e = prev_e;
+                } else {
+                    break;
                 }
             }
         }
