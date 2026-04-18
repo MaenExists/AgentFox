@@ -1,0 +1,9 @@
+{
+  "name": "agentfox",
+  "version": "0.1.0",
+  "description": "High-velocity persistent browser runtime for AI agents",
+  "keywords": ["pi-package"],
+  "pi": {
+    "skills": ["./skill"]
+  }
+}
