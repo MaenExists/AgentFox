@@ -85,10 +85,29 @@ afox fill e21 "agentfox vs playwright"
 AgentFox can extract the core content of any page and return an ultra-fast LLM summary instead of the full layout. This drastically reduces the context window usage for your agents.
 
 ### Setup (One-time)
-Configure AgentFox with an OpenAI-compatible API key (e.g., OpenCode Zen, Groq, OpenAI).
+Configure AgentFox with an OpenAI-compatible API key. The `auth` command accepts the API key, the base URL of the API, and the model name.
+
+**Using OpenCode Zen (Free):**
 ```bash
 afox auth <YOUR_API_KEY> https://opencode.ai/zen/v1 nemotron-3-super-free
 ```
+
+**Using OpenAI:**
+```bash
+afox auth sk-... https://api.openai.com/v1 gpt-4o-mini
+```
+
+**Using Groq (Ultra-fast):**
+```bash
+afox auth gsk_... https://api.groq.com/openai/v1 llama3-8b-8192
+```
+
+**Using Local Ollama:**
+```bash
+afox auth dummy_key http://localhost:11434/v1 llama3
+```
+
+You can provide *any* API key, endpoint, and model as long as the provider adheres to the standard OpenAI chat completions API format (`/v1/chat/completions`).
 
 ### Usage
 Append `--summarize` or `-s` to any navigation or snapshot command.

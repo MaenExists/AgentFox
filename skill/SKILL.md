@@ -51,9 +51,20 @@ The primary binary is `afox`. The background daemon will start automatically on 
 ### Summarization
 You can append the `--summarize` or `-s` flag to `search`, `open`, `view`, and `snap` to get a concise 2-3 paragraph summary of the page's core content instead of the full layout.
 
-**Requirement**: Summarization requires prior authentication. 
+**Requirement**: Summarization requires prior authentication. The `auth` command accepts **any OpenAI-compatible API endpoint**. This means you can use free tiers, local models, or commercial providers.
+
 ```bash
-afox auth <API_KEY> https://opencode.ai/zen/v1 nemotron-3-super-free
+# General Syntax:
+afox auth <API_KEY> <BASE_URL> <MODEL_NAME>
+
+# Example 1: OpenCode Zen (Free Nemotron Model)
+afox auth <YOUR_API_KEY> https://opencode.ai/zen/v1 nemotron-3-super-free
+
+# Example 2: OpenAI
+afox auth sk-... https://api.openai.com/v1 gpt-4o-mini
+
+# Example 3: Local Ollama
+afox auth dummy_key http://localhost:11434/v1 llama3.2
 ```
 
 ## Best Practices for Agents

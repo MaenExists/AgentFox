@@ -80,13 +80,15 @@ The interface should be:
 
 | Command | Purpose |
 |---|---|
-| `afox search <query>` | Open or resolve a destination using a browser-aware flow |
-| `afox open <url>` | Navigate current session to a URL |
-| `afox snap` | Return semantic page state |
+| `afox search <query> [-s]` | Open or resolve a destination using a browser-aware flow |
+| `afox open <url> [-s]` | Navigate current session to a URL |
+| `afox snap [-s]` | Return semantic page state or summary |
+| `afox view [-s]` | Return a clean Markdown representation |
 | `afox text <element-id>` | Return readable text/value for one element |
 | `afox click <element-id>` | Trigger realistic click interaction |
 | `afox fill <element-id> <text>` | Fill an input-like field |
 | `afox eval <js>` | Escape hatch for page-context JS |
+| `afox auth <key> <url> <model>` | Set LLM credentials for summarization |
 | `afox quit` | Stop daemon |
 
 ### Required `snap` Format

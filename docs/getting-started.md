@@ -22,16 +22,50 @@ The `snap` command is the heart of AgentFox. Instead of forcing your LLM to pars
 When passing a snapshot to an LLM, instruct it to:
 > "Analyze the provided page snapshot and respond with the command `afox click <id>` or `afox fill <id> <text>` to achieve the goal."
 
-## Realistic Interactions
+## LLM Summarization (`--summarize` / `-s`)
 
-AgentFox doesn't just dispatch "click" events. It triggers the full browser event lifecycle:
-1. `pointerdown`
-2. `mousedown`
-3. `focus`
-4. `mouseup`
-5. `click`
+The `--summarize` flag transforms raw webpage content into highly condensed, context-friendly text. Instead of passing 5,000+ tokens to your LLM, AgentFox extracts the core text, filters out noise (navbars, footers), and queries an LLM to generate a concise summary.
 
-This ensures compatibility with modern React/Next.js/Vue applications that rely on complex event listeners for interaction.
+### Why Use Summaries?
+- **Context Window Savings**: Reduces context consumption massively, making multi-page research feasible.
+- **Speed**: Agent loops run much faster because the LLM processes less data.
+- **Cost**: Dramatically lowers token input costs for commercial LLMs.
+
+### Authentication for Summarization
+AgentFox supports **any OpenAI-compatible API endpoint**. You can use a local LLM, a free tier API, or a premium commercial model. The configuration is stored locally at `~/.config/agentfox/config.json`.
+
+```bash
+afox auth <YOUR_API_KEY> <BASE_URL> <MODEL_NAME>
+```
+
+**Examples:**
+*   **OpenCode Zen (Free, highly recommended for testing):**
+    ```bash
+    afox auth <YOUR_API_KEY> https://opencode.ai/zen/v1 nemotron-3-super-free
+    ```
+*   **OpenAI:**
+    ```bash
+    afox auth sk-... https://api.openai.com/v1 gpt-4o-mini
+    ```
+*   **Groq:**
+    ```bash
+    afox auth gsk_... https://api.groq.com/openai/v1 llama3-8b-8192
+    ```
+*   **Ollama (Local Inference):**
+    ```bash
+    afox auth dummy http://localhost:11434/v1 llama3.2
+    ```
+
+### Using Summaries in the Agent Loop
+Agents can append the `-s` flag to `search`, `open`, `view`, and `snap` commands.
+
+```bash
+# Research mode: Summarize the first Google result directly
+afox search "latest news on autonomous agents" -s
+
+# Read mode: Open an article and grab the gist immediately
+afox open https://example.com/article --summarize
+```
 
 ## Best Practices
 
