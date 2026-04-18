@@ -4,6 +4,7 @@
   "description": "High-velocity persistent browser runtime for AI agents",
   "keywords": ["pi-package"],
   "pi": {
-    "skills": ["./skill"]
+    "skills": ["./skill"],
+    "prompts": ["./prompts"]
   }
 }
