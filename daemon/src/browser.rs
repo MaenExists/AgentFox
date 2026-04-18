@@ -461,7 +461,10 @@ impl Browser {
             trimmed.to_string()
         };
 
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(60))
+            .build()
+            .map_err(|err| format!("failed to build HTTP client: {err}"))?;
         
         #[derive(Serialize)]
         struct Message {
@@ -473,21 +476,37 @@ impl Browser {
             model: String,
             messages: Vec<Message>,
             max_tokens: u32,
+            temperature: f32,
         }
+
+        let prompt = format!(
+            "You are a strict data extraction tool. You process raw text from a browser (URL: {}) and output ONLY the final requested format. You do not explain yourself. You do not output your thoughts.\n\n\
+            YOUR RULES:\n\
+            1. DO NOT output any introductory text, outro text, or reasoning. Output ONLY the requested data format.\n\
+            2. Extract EXACT technical details: API endpoints, URLs, code snippets, CLI commands, prices, dates, and numbers.\n\
+            3. If this is a Search Results page, output ONLY a Markdown list of the top 3-5 results.\n\
+               Example:\n\
+               - [Result Title](https://example.com/page): One sentence summary.\n\
+               - [Another Result](https://example.com/other): Another one sentence summary.\n\
+            4. If this is documentation or an article, output ONLY Markdown headings and bullet points containing the core technical value.\n\
+            5. NEVER hallucinate. If the page lacks useful info, reply ONLY with 'NO_USEFUL_DATA'.",
+            snapshot.url
+        );
 
         let chat_request = ChatRequest {
             model: config.model,
             messages: vec![
                 Message {
                     role: "system".to_string(),
-                    content: "You are a concise summarizer for an AI agent. Extract the core information from the provided web page text. If the text is an article, summarize its facts and data into 2-3 short paragraphs. If it is a search engine results page, summarize the top 3-5 search results and their key takeaways. Ignore navigation menus, country lists, and UI elements. Do not complain about the format. Do not use filler words.".to_string(),
+                    content: prompt,
                 },
                 Message {
                     role: "user".to_string(),
-                    content: truncated_content,
+                    content: format!("Here is the raw page text:\n\n{}\n\nEXTRACT ONLY THE FINAL REQUESTED DATA WITHOUT ANY EXPLANATION.", truncated_content),
                 },
             ],
-            max_tokens: 500,
+            max_tokens: 1500,
+            temperature: 0.1,
         };
 
         let res = client
@@ -504,11 +523,23 @@ impl Browser {
         }
 
         let json: Value = res.json().map_err(|err| format!("failed to parse LLM response: {err}"))?;
-        let summary = json["choices"][0]["message"]["content"]
+        let mut summary = json["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or_else(|| "LLM response did not contain content".to_string())?;
+            .ok_or_else(|| "LLM response did not contain content".to_string())?
+            .to_string();
 
-        Ok(summary.to_string())
+        // Hack to strip out chain-of-thought babbling if the model ignored our strict prompt
+        if let Some(idx) = summary.find("- [") {
+            if idx > 0 && summary[..idx].to_lowercase().contains("let's") {
+                summary = summary[idx..].to_string();
+            }
+        } else if let Some(idx) = summary.find("# ") {
+            if idx > 0 && summary[..idx].to_lowercase().contains("let's") {
+                summary = summary[idx..].to_string();
+            }
+        }
+
+        Ok(summary)
     }
 
     fn page_info(&self) -> Result<PageInfo, String> {
