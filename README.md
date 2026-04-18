@@ -67,16 +67,36 @@ afox fill e21 "agentfox vs playwright"
 | Command | Usage | Description |
 |---|---|---|
 | `search` | `afox search <q>`   | High-speed navigation (URL or search query). |
+| `open`   | `afox open <url>`   | Navigate current session to a specific URL. |
 | `view`   | `afox view`         | Get a clean Markdown snapshot of the page. |
 | `snap`   | `afox snap`         | Get the raw semantic JSON tree. |
 | `click`  | `afox click <id>`    | Direct-ID browser interaction. |
 | `fill`   | `afox fill <id> <v>` | Instant form input with event triggering. |
 | `text`   | `afox text <id>`     | Extract clean text content from an element. |
 | `eval`   | `afox eval <code>`    | Escape hatch for raw JS execution. |
+| `auth`   | `afox auth <key> [url] [model]` | Set up an LLM API for on-the-fly summaries. |
 | `ping`   | `afox ping`         | Check if the daemon is alive (starts it if not). |
 | `quit`   | `afox quit`         | Shutdown the background daemon. |
 
 ---
+
+## 🧠 LLM Summarization
+
+AgentFox can extract the core content of any page and return an ultra-fast LLM summary instead of the full layout. This drastically reduces the context window usage for your agents.
+
+### Setup (One-time)
+Configure AgentFox with an OpenAI-compatible API key (e.g., OpenCode Zen, Groq, OpenAI).
+```bash
+afox auth <YOUR_API_KEY> https://opencode.ai/zen/v1 nemotron-3-super-free
+```
+
+### Usage
+Append `--summarize` or `-s` to any navigation or snapshot command.
+```bash
+afox search "latest news on autonomous agents" --summarize
+afox open https://example.com -s
+afox view --summarize
+```
 
 ## 🏗 Architecture
 

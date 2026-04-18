@@ -94,66 +94,124 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
     let (response, should_quit) = match request {
         Request::Ping => (Response::ok_message("pong"), false),
         Request::Quit => (Response::ok_message("shutting down"), true),
-        Request::Search { query } => match browser.search(&query) {
-            Ok(page) => (
-                Response::Ok {
-                    message: None,
-                    url: Some(page.url),
-                    title: Some(page.title),
-                    text: None,
-                    markdown: None,
-                    result: None,
-                    elements: None,
-                },
-                false,
-            ),
+        Request::Search { query, summarize } => match browser.search(&query) {
+            Ok(page) => {
+                let summary = if summarize { 
+                    match browser.summarize() {
+                        Ok(s) => Some(s),
+                        Err(e) => {
+                            let _ = log_line(&format!("summarize error: {e}"));
+                            None
+                        }
+                    }
+                } else { None };
+                (
+                    Response::Ok {
+                        message: None,
+                        url: Some(page.url),
+                        title: Some(page.title),
+                        text: None,
+                        markdown: None,
+                        summary,
+                        result: None,
+                        elements: None,
+                    },
+                    false,
+                )
+            }
             Err(error) => (Response::error(error), false),
         },
-        Request::Open { url } => match browser.open(&url) {
-            Ok(page) => (
-                Response::Ok {
-                    message: None,
-                    url: Some(page.url),
-                    title: Some(page.title),
-                    text: None,
-                    markdown: None,
-                    result: None,
-                    elements: None,
-                },
-                false,
-            ),
+        Request::Open { url, summarize } => match browser.open(&url) {
+            Ok(page) => {
+                let summary = if summarize { 
+                    match browser.summarize() {
+                        Ok(s) => Some(s),
+                        Err(e) => {
+                            let _ = log_line(&format!("summarize error: {e}"));
+                            None
+                        }
+                    }
+                } else { None };
+                (
+                    Response::Ok {
+                        message: None,
+                        url: Some(page.url),
+                        title: Some(page.title),
+                        text: None,
+                        markdown: None,
+                        summary,
+                        result: None,
+                        elements: None,
+                    },
+                    false,
+                )
+            }
             Err(error) => (Response::error(error), false),
         },
-        Request::Snap => match browser.snap() {
-            Ok(snapshot) => (
-                Response::Ok {
-                    message: None,
-                    url: Some(snapshot.url),
-                    title: Some(snapshot.title),
-                    text: None,
-                    markdown: None,
-                    result: None,
-                    elements: Some(snapshot.elements),
-                },
-                false,
-            ),
+        Request::Snap { summarize } => match browser.snap() {
+            Ok(snapshot) => {
+                let summary = if summarize { 
+                    match browser.summarize() {
+                        Ok(s) => Some(s),
+                        Err(e) => {
+                            let _ = log_line(&format!("summarize error: {e}"));
+                            None
+                        }
+                    }
+                } else { None };
+                (
+                    Response::Ok {
+                        message: None,
+                        url: Some(snapshot.url),
+                        title: Some(snapshot.title),
+                        text: None,
+                        markdown: None,
+                        summary,
+                        result: None,
+                        elements: Some(snapshot.elements),
+                    },
+                    false,
+                )
+            }
             Err(error) => (Response::error(error), false),
         },
-        Request::View => match browser.view() {
-            Ok(markdown) => (
-                Response::Ok {
-                    message: None,
-                    url: None,
-                    title: None,
-                    text: None,
-                    markdown: Some(markdown),
-                    result: None,
-                    elements: None,
-                },
-                false,
-            ),
-            Err(error) => (Response::error(error), false),
-        },
+        Request::View { summarize } => {
+            if summarize {
+                match browser.summarize() {
+                    Ok(summary) => (
+                        Response::Ok {
+                            message: None,
+                            url: None,
+                            title: None,
+                            text: None,
+                            markdown: None,
+                            summary: Some(summary),
+                            result: None,
+                            elements: None,
+                        },
+                        false,
+                    ),
+                    Err(error) => (Response::error(error), false),
+                }
+            } else {
+                match browser.view() {
+                    Ok(markdown) => (
+                        Response::Ok {
+                            message: None,
+                            url: None,
+                            title: None,
+                            text: None,
+                            markdown: Some(markdown),
+                            summary: None,
+                            result: None,
+                            elements: None,
+                        },
+                        false,
+                    ),
+                    Err(error) => (Response::error(error), false),
+                }
+            }
+        }
         Request::Click { element_id } => match browser.click(&element_id) {
             Ok(page) => (
                 Response::Ok {
@@ -162,6 +220,7 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
                     title: Some(page.title),
                     text: None,
                     markdown: None,
+                    summary: None,
                     result: None,
                     elements: None,
                 },
@@ -181,6 +240,7 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
                     title: None,
                     text: Some(text),
                     markdown: None,
+                    summary: None,
                     result: None,
                     elements: None,
                 },
@@ -196,6 +256,7 @@ fn handle_client(mut stream: UnixStream, browser: &Browser) -> Result<bool, Stri
                     title: None,
                     text: None,
                     markdown: None,
+                    summary: None,
                     result: Some(result),
                     elements: None,
                 },

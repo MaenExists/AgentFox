@@ -1,9 +1,10 @@
 use std::env;
+use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
 
-use agentfox_protocol::{Request, Response, SOCKET_PATH};
+use agentfox_protocol::{get_config_path, Config, Request, Response, SOCKET_PATH};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -28,6 +29,10 @@ fn run() -> Result<(), String> {
     if args[0] == "--version" || args[0] == "-v" {
         println!("afox version {}", VERSION);
         return Ok(());
+    }
+
+    if args[0] == "auth" {
+        return handle_auth(args);
     }
 
     let request = parse_request(args)?;
@@ -64,6 +69,9 @@ fn run() -> Result<(), String> {
         serde_json::from_str(response_line.trim()).map_err(|err| format!("failed to decode response: {err}"))?;
     
     match response {
+        Response::Ok { summary: Some(sum), .. } => {
+            println!("{sum}");
+        }
         Response::Ok { markdown: Some(md), .. } => {
             println!("{md}");
         }
@@ -92,20 +100,79 @@ fn run() -> Result<(), String> {
 }
 
 fn parse_request(args: Vec<String>) -> Result<Request, String> {
-    let cmd = args[0].as_str();
+    let mut summarize = false;
+    let mut filtered_args = Vec::new();
+
+    for arg in args {
+        if arg == "--summarize" || arg == "-s" {
+            summarize = true;
+        } else {
+            filtered_args.push(arg);
+        }
+    }
+
+    if filtered_args.is_empty() {
+        return Err("no command provided".to_string());
+    }
+
+    let cmd = filtered_args[0].as_str();
     match cmd {
-        "search" if args.len() == 2 => Ok(Request::Search { query: args[1].clone() }),
-        "open" if args.len() == 2 => Ok(Request::Open { url: args[1].clone() }),
-        "click" if args.len() == 2 => Ok(Request::Click { element_id: args[1].clone() }),
-        "text" if args.len() == 2 => Ok(Request::Text { element_id: args[1].clone() }),
-        "fill" if args.len() == 3 => Ok(Request::Fill { element_id: args[1].clone(), text: args[2].clone() }),
-        "eval" if args.len() == 2 => Ok(Request::Eval { code: args[1].clone() }),
-        "snap" => Ok(Request::Snap),
-        "view" => Ok(Request::View),
+        "search" if filtered_args.len() == 2 => Ok(Request::Search {
+            query: filtered_args[1].clone(),
+            summarize,
+        }),
+        "open" if filtered_args.len() == 2 => Ok(Request::Open {
+            url: filtered_args[1].clone(),
+            summarize,
+        }),
+        "snap" => Ok(Request::Snap { summarize }),
+        "view" => Ok(Request::View { summarize }),
+        "click" if filtered_args.len() == 2 => Ok(Request::Click {
+            element_id: filtered_args[1].clone(),
+        }),
+        "text" if filtered_args.len() == 2 => Ok(Request::Text {
+            element_id: filtered_args[1].clone(),
+        }),
+        "fill" if filtered_args.len() == 3 => Ok(Request::Fill {
+            element_id: filtered_args[1].clone(),
+            text: filtered_args[2].clone(),
+        }),
+        "eval" if filtered_args.len() == 2 => Ok(Request::Eval {
+            code: filtered_args[1].clone(),
+        }),
         "ping" => Ok(Request::Ping),
         "quit" => Ok(Request::Quit),
-        _ => Err(format!("invalid command or arguments for '{}'. See 'afox help'.", cmd)),
+        _ => Err(format!(
+            "invalid command or arguments for '{}'. See 'afox help'.",
+            cmd
+        )),
     }
+}
+
+fn handle_auth(args: Vec<String>) -> Result<(), String> {
+    if args.len() < 2 {
+        return Err("usage: afox auth <api_key> [api_url] [model]".to_string());
+    }
+
+    let mut config = Config::default();
+    config.api_key = args[1].clone();
+    if args.len() >= 3 {
+        config.api_url = args[2].clone();
+    }
+    if args.len() >= 4 {
+        config.model = args[3].clone();
+    }
+
+    let path = get_config_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("failed to create config directory: {err}"))?;
+    }
+
+    let json = serde_json::to_string_pretty(&config).map_err(|err| format!("failed to encode config: {err}"))?;
+    fs::write(path, json).map_err(|err| format!("failed to write config: {err}"))?;
+
+    println!("Authentication configured successfully.");
+    Ok(())
 }
 
 fn connect_with_retry(retries: usize) -> Result<UnixStream, String> {
@@ -156,17 +223,19 @@ fn usage() -> String {
         USAGE:\n\
           afox <COMMAND> [ARGS]\n\n\
         COMMANDS:\n\
-          search <query>      Smart navigation: URL or search query\n\
-          open <url>          Navigate to a specific URL\n\
-          snap                Get a semantic JSON snapshot of the page\n\
-          view                Get a semantic Markdown snapshot of the page\n\
-          click <id>          Perform a realistic click on an element\n\
+          search <q>          Navigation: URL or search query\n\
+          open <url>          Navigate to URL\n\
+          snap                Get semantic JSON snapshot\n\
+          view                Get semantic Markdown snapshot\n\
+          click <id>          Perform a realistic click\n\
           fill <id> <text>    Input text into a field\n\
-          text <id>           Extract clean text from an element\n\
-          eval <code>         Execute arbitrary JavaScript\n\
-          ping                Check if the daemon is alive\n\
+          text <id>           Extract text from element\n\
+          eval <code>         Execute JavaScript\n\
+          auth <key> [url]    Configure LLM API for summarization\n\
+          ping                Check if daemon is alive\n\
           quit                Shutdown the background daemon\n\n\
         FLAGS:\n\
+          -s, --summarize     Modifier: return a summary instead of full output\n\
           -h, --help          Show this help message\n\
           -v, --version       Show version information\n\n\
         The daemon (afoxd) is automatically started if not already running.",

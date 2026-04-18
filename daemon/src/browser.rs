@@ -1,11 +1,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
+use std::fs;
 
 use glib::MainLoop;
-use agentfox_protocol::SemanticNode;
+use agentfox_protocol::{get_config_path, Config, SemanticNode};
 use javascriptcore::ValueExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use gtk::prelude::*;
 use webkit2gtk::{LoadEvent, TLSErrorsPolicy, WebContext, WebContextExt, WebView, WebViewExt};
@@ -424,6 +425,89 @@ impl Browser {
             }})()
             "#
         ))
+    }
+
+    pub fn summarize(&self) -> Result<String, String> {
+        let config_path = get_config_path();
+        if !config_path.exists() {
+            return Err("AgentFox is not authenticated. Run 'afox auth <key>' first.".to_string());
+        }
+        let config_json = fs::read_to_string(config_path).map_err(|err| format!("failed to read config: {err}"))?;
+        let config: Config = serde_json::from_str(&config_json).map_err(|err| format!("failed to parse config: {err}"))?;
+
+        if config.api_key.is_empty() {
+            return Err("API key is empty. Run 'afox auth <key>' to set it.".to_string());
+        }
+
+        let main_content = self.evaluate_string(
+            r#"
+            (() => {
+              const selectors = [
+                'article', 'main', '[role="main"]', '.main-content', '#content', '.content', '.article'
+              ];
+              for (const s of selectors) {
+                const el = document.querySelector(s);
+                if (el && el.innerText.length > 500) return el.innerText;
+              }
+              return document.body.innerText;
+            })()
+            "#,
+        )?;
+
+        let truncated_content = if main_content.len() > 10000 {
+            format!("{}...", &main_content[..10000])
+        } else {
+            main_content
+        };
+
+        let client = reqwest::blocking::Client::new();
+        
+        #[derive(Serialize)]
+        struct Message {
+            role: String,
+            content: String,
+        }
+        #[derive(Serialize)]
+        struct ChatRequest {
+            model: String,
+            messages: Vec<Message>,
+            max_tokens: u32,
+        }
+
+        let chat_request = ChatRequest {
+            model: config.model,
+            messages: vec![
+                Message {
+                    role: "system".to_string(),
+                    content: "You are a concise summarizer for an AI agent. Summarize the following web page content into 2-3 short, highly informative paragraphs. Focus on facts, data, and key actions available. Do not use filler words.".to_string(),
+                },
+                Message {
+                    role: "user".to_string(),
+                    content: truncated_content,
+                },
+            ],
+            max_tokens: 500,
+        };
+
+        let res = client
+            .post(format!("{}/chat/completions", config.api_url))
+            .header("Authorization", format!("Bearer {}", config.api_key))
+            .json(&chat_request)
+            .send()
+            .map_err(|err| format!("LLM API request failed: {err}"))?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let error_text = res.text().unwrap_or_default();
+            return Err(format!("LLM API returned error ({}): {}", status, error_text));
+        }
+
+        let json: Value = res.json().map_err(|err| format!("failed to parse LLM response: {err}"))?;
+        let summary = json["choices"][0]["message"]["content"]
+            .as_str()
+            .ok_or_else(|| "LLM response did not contain content".to_string())?;
+
+        Ok(summary.to_string())
     }
 
     fn page_info(&self) -> Result<PageInfo, String> {

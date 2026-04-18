@@ -3,18 +3,64 @@ use serde_json::Value;
 
 pub const SOCKET_PATH: &str = "/tmp/afox.sock";
 pub const LOG_PATH: &str = "/tmp/afox.log";
+pub const CONFIG_PATH: &str = ".config/agentfox/config.json";
+
+pub fn get_config_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    std::path::Path::new(&home).join(CONFIG_PATH)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    pub api_key: String,
+    pub api_url: String,
+    pub model: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            api_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case")]
 pub enum Request {
-    Search { query: String },
-    Open { url: String },
-    Snap,
-    View,
-    Click { element_id: String },
-    Fill { element_id: String, text: String },
-    Text { element_id: String },
-    Eval { code: String },
+    Search {
+        query: String,
+        #[serde(default)]
+        summarize: bool,
+    },
+    Open {
+        url: String,
+        #[serde(default)]
+        summarize: bool,
+    },
+    View {
+        #[serde(default)]
+        summarize: bool,
+    },
+    Snap {
+        #[serde(default)]
+        summarize: bool,
+    },
+    Click {
+        element_id: String,
+    },
+    Fill {
+        element_id: String,
+        text: String,
+    },
+    Text {
+        element_id: String,
+    },
+    Eval {
+        code: String,
+    },
     Quit,
     Ping,
 }
@@ -46,11 +92,15 @@ pub enum Response {
         #[serde(skip_serializing_if = "Option::is_none")]
         markdown: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         result: Option<Value>,
         #[serde(skip_serializing_if = "Option::is_none")]
         elements: Option<Vec<SemanticNode>>,
     },
-    Error { error: String },
+    Error {
+        error: String,
+    },
 }
 
 impl Response {
@@ -61,6 +111,7 @@ impl Response {
             title: None,
             text: None,
             markdown: None,
+            summary: None,
             result: None,
             elements: None,
         }
