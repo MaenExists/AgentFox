@@ -480,16 +480,18 @@ impl Browser {
         }
 
         let prompt = format!(
-            "You are a strict data extraction tool. You process raw text from a browser (URL: {}) and output ONLY the final requested format. You do not explain yourself. You do not output your thoughts.\n\n\
-            YOUR RULES:\n\
-            1. DO NOT output any introductory text, outro text, or reasoning. Output ONLY the requested data format.\n\
-            2. Extract EXACT technical details: API endpoints, URLs, code snippets, CLI commands, prices, dates, and numbers.\n\
-            3. If this is a Search Results page, output ONLY a Markdown list of the top 3-5 results.\n\
-               Example:\n\
-               - [Result Title](https://example.com/page): One sentence summary.\n\
-               - [Another Result](https://example.com/other): Another one sentence summary.\n\
-            4. If this is documentation or an article, output ONLY Markdown headings and bullet points containing the core technical value.\n\
-            5. NEVER hallucinate. If the page lacks useful info, reply ONLY with 'NO_USEFUL_DATA'.",
+            "You are a highly intelligent technical extraction engine for an AI agent. \n\
+            Your job is to read the raw text of a web page and extract the exact technical answer the user is looking for.\n\n\
+            Page URL: {}\n\n\
+            INSTRUCTIONS:\n\
+            1. If this is a search page, figure out what the user was searching for and provide the direct answer by synthesizing the snippets.\n\
+            2. If this is a documentation page, extract the core code blocks, API endpoints, CLI commands, and configuration details.\n\
+            3. YOU MUST OUTPUT VALID JSON ONLY. NO MARKDOWN. NO EXPLANATIONS. NO THOUGHT PROCESS.\n\n\
+            JSON FORMAT:\n\
+            {{\n\
+              \"direct_answer\": \"The exact technical answer, code snippet, or endpoint (keep it brutally concise).\",\n\
+              \"source_urls\": [\"https://relevant-link-1\", \"https://relevant-link-2\"]\n\
+            }}",
             snapshot.url
         );
 
@@ -523,23 +525,49 @@ impl Browser {
         }
 
         let json: Value = res.json().map_err(|err| format!("failed to parse LLM response: {err}"))?;
-        let mut summary = json["choices"][0]["message"]["content"]
+        let raw_text = json["choices"][0]["message"]["content"]
             .as_str()
             .ok_or_else(|| "LLM response did not contain content".to_string())?
             .to_string();
 
-        // Hack to strip out chain-of-thought babbling if the model ignored our strict prompt
-        if let Some(idx) = summary.find("- [") {
-            if idx > 0 && summary[..idx].to_lowercase().contains("let's") {
-                summary = summary[idx..].to_string();
-            }
-        } else if let Some(idx) = summary.find("# ") {
-            if idx > 0 && summary[..idx].to_lowercase().contains("let's") {
-                summary = summary[idx..].to_string();
+        let mut final_summary = String::new();
+        let start = raw_text.find('{');
+        let end = raw_text.rfind('}');
+        
+        if let (Some(s), Some(e)) = (start, end) {
+            if s <= e {
+                let json_str = &raw_text[s..=e];
+                if let Ok(parsed) = serde_json::from_str::<Value>(json_str) {
+                    if let Some(ans) = parsed.get("direct_answer").and_then(|v| v.as_str()) {
+                        final_summary.push_str(&format!("Answer: {}\n\n", ans));
+                    }
+                    if let Some(urls) = parsed.get("source_urls").and_then(|v| v.as_array()) {
+                        if !urls.is_empty() {
+                            final_summary.push_str("Sources:\n");
+                            for url in urls {
+                                if let Some(u) = url.as_str() {
+                                    final_summary.push_str(&format!("- {}\n", u));
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        Ok(summary)
+        if final_summary.is_empty() {
+            // Fallback to raw text if JSON extraction failed entirely, 
+            // but try to strip common conversational prefixes first.
+            let mut fallback = raw_text.trim();
+            if fallback.to_lowercase().starts_with("here is") || fallback.to_lowercase().starts_with("certainly") {
+                if let Some(idx) = fallback.find('\n') {
+                    fallback = fallback[idx..].trim();
+                }
+            }
+            final_summary = fallback.to_string();
+        }
+
+        Ok(final_summary.trim().to_string())
     }
 
     fn page_info(&self) -> Result<PageInfo, String> {
