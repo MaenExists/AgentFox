@@ -1,0 +1,1585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentFox - The Browser Built for AI Agents</title>
+  <meta name="description" content="A high-velocity, persistent browser runtime built specifically for AI agents. 10ms command latency, agent-native output, persistent sessions.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-deep: #050508;
+      --bg-primary: #08080d;
+      --bg-secondary: #0c0c14;
+      --bg-elevated: #11111b;
+      --bg-card: #0f0f18;
+      --border: #1a1a28;
+      --border-accent: rgba(255, 45, 120, 0.15);
+      --accent: #ff2d78;
+      --accent-glow: rgba(255, 45, 120, 0.12);
+      --accent-soft: #ff6b9d;
+      --accent-subtle: #fc88b2;
+      --cyan: #22d3ee;
+      --cyan-glow: rgba(34, 211, 238, 0.08);
+      --text-primary: #efeff4;
+      --text-secondary: #7a7a8c;
+      --text-muted: #3a3a4a;
+      --code-bg: #0a0a12;
+      --radius: 1.5rem;
+      --radius-sm: 0.75rem;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    .font-mono, code, pre, .cmd-tag {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    @media (max-width: 768px) {
+      .container { padding: 0 1.25rem; }
+    }
+
+    /* ---- Grain/Noise Overlay ---- */
+    .grain-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      pointer-events: none;
+      opacity: 0.035;
+      mix-blend-mode: overlay;
+    }
+    .grain-overlay::before {
+      content: '';
+      position: absolute;
+      inset: -50%;
+      width: 200%;
+      height: 200%;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 256px 256px;
+      animation: grainShift 0.4s steps(4) infinite;
+    }
+    @keyframes grainShift {
+      0% { transform: translate(0, 0); }
+      25% { transform: translate(-4px, 2px); }
+      50% { transform: translate(4px, -2px); }
+      75% { transform: translate(-2px, 4px); }
+    }
+
+    /* ---- Scanlines ---- */
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 99;
+      pointer-events: none;
+      opacity: 0.03;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(255, 255, 255, 0.03) 2px,
+        rgba(255, 255, 255, 0.03) 4px
+      );
+    }
+
+    /* ---- Grid Pattern Background ---- */
+    .grid-bg {
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 48px 48px;
+    }
+
+    /* ---- Fluid Transitions ---- */
+    .fluid-ease {
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* ---- Glass (dark version) ---- */
+    .glass {
+      background: rgba(17, 17, 27, 0.6);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .glass-light {
+      background: rgba(255, 255, 255, 0.02);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    /* ---- Diffusion Shadow ---- */
+    .shadow-diffuse {
+      box-shadow: 0 24px 48px -16px rgba(0, 0, 0, 0.4);
+    }
+
+    /* ---- Staggered Animations ---- */
+    .stagger-1 { animation-delay: 0ms; }
+    .stagger-2 { animation-delay: 80ms; }
+    .stagger-3 { animation-delay: 160ms; }
+    .stagger-4 { animation-delay: 240ms; }
+    .stagger-5 { animation-delay: 320ms; }
+    .stagger-6 { animation-delay: 400ms; }
+    .stagger-7 { animation-delay: 480ms; }
+    .stagger-8 { animation-delay: 560ms; }
+
+    /* ---- Keyframes ---- */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideRight {
+      from { opacity: 0; transform: translateX(32px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 20px rgba(255, 45, 120, 0.1), 0 0 60px rgba(255, 45, 120, 0.04); }
+      50% { box-shadow: 0 0 30px rgba(255, 45, 120, 0.18), 0 0 80px rgba(255, 45, 120, 0.06); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    @keyframes borderFlow {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes dashScroll {
+      to { stroke-dashoffset: -20; }
+    }
+    @keyframes breathe {
+      0%, 100% { opacity: 0.4; transform: scale(0.95); }
+      50% { opacity: 1; transform: scale(1); }
+    }
+    @keyframes dataPulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    @keyframes orbit {
+      0% { transform: rotate(0deg) translateX(120px) rotate(0deg); }
+      100% { transform: rotate(360deg) translateX(120px) rotate(-360deg); }
+    }
+
+    .animate-fade-up { animation: fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+    .animate-fade-in { animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+    .animate-slide-right { animation: slideRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
+    .animate-float { animation: float 4s ease-in-out infinite; }
+    .animate-blink { animation: blink 1s step-end infinite; }
+    .animate-pulse-glow { animation: pulseGlow 3s ease-in-out infinite; }
+    .animate-breathe { animation: breathe 3s ease-in-out infinite; }
+
+    /* ---- Navbar ---- */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 50;
+      padding: 1.125rem 0;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .navbar.scrolled {
+      background: rgba(8, 8, 13, 0.85);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      padding: 0.75rem 0;
+    }
+
+    .nav-link {
+      position: relative;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-decoration: none;
+      padding: 0.375rem 0;
+      transition: color 0.3s ease;
+    }
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 0;
+      height: 1.5px;
+      background: var(--accent);
+      transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .nav-link:hover { color: var(--text-primary); }
+    .nav-link:hover::after { width: 100%; }
+
+    /* ---- Buttons ---- */
+    .btn-primary {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.625rem;
+      padding: 0.875rem 2.25rem;
+      background: var(--accent);
+      color: #050508;
+      border-radius: 9999px;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow: hidden;
+      cursor: pointer;
+      border: none;
+      text-decoration: none;
+      box-shadow: 0 0 24px rgba(255, 45, 120, 0.15);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 16px 40px -8px rgba(255, 45, 120, 0.3);
+      background: #ff4080;
+    }
+    .btn-primary:active {
+      transform: scale(0.97) translateY(0);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.875rem 2.25rem;
+      background: transparent;
+      color: var(--text-primary);
+      border-radius: 9999px;
+      font-weight: 500;
+      font-size: 0.9375rem;
+      border: 1px solid var(--border);
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      background: rgba(255, 45, 120, 0.04);
+      box-shadow: 0 0 24px rgba(255, 45, 120, 0.06);
+      transform: translateY(-2px);
+    }
+    .btn-secondary:active { transform: scale(0.97); }
+
+    /* ---- Terminal ---- */
+    .terminal-window {
+      background: #07070e;
+      border-radius: var(--radius);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: 0 32px 80px -16px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      overflow: hidden;
+    }
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.875rem 1.25rem;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    .terminal-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      transition: opacity 0.3s ease;
+    }
+    .terminal-body {
+      padding: 1.5rem;
+      min-height: 300px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8125rem;
+      line-height: 1.8;
+    }
+    .terminal-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      opacity: 0;
+      animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .terminal-line .prompt { flex-shrink: 0; }
+    .terminal-line .prompt.green { color: #22d3ee; }
+    .terminal-line .prompt.rose { color: var(--accent); }
+    .terminal-line .prompt.muted { color: var(--text-muted); }
+
+    .syn-cmd { color: var(--text-primary); }
+    .syn-flag { color: var(--accent-soft); }
+    .syn-str { color: #7a7a8c; }
+    .syn-out { color: #6a6a7c; }
+    .syn-comment { color: #3a3a4a; font-style: italic; }
+    .syn-highlight { color: #22d3ee; }
+
+    /* ---- Feature Cards ---- */
+    .feature-card {
+      position: relative;
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      padding: 2.5rem;
+      border: 1px solid var(--border);
+      box-shadow: 0 16px 32px -12px rgba(0, 0, 0, 0.3);
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: default;
+      overflow: hidden;
+    }
+    .feature-card .card-border {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1.5px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      background-size: 200% 100%;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    .feature-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(255, 45, 120, 0.15);
+      box-shadow: 0 32px 64px -16px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 45, 120, 0.04);
+    }
+    .feature-card:hover .card-border {
+      opacity: 1;
+      animation: borderFlow 3s linear infinite;
+    }
+
+    .icon-ring {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px; height: 48px;
+      border-radius: 16px;
+      background: rgba(255, 45, 120, 0.06);
+      border: 1px solid rgba(255, 45, 120, 0.08);
+      flex-shrink: 0;
+      transition: all 0.3s ease;
+    }
+    .icon-ring svg {
+      width: 22px; height: 22px;
+      color: var(--accent-soft);
+    }
+    .feature-card:hover .icon-ring {
+      background: rgba(255, 45, 120, 0.1);
+      border-color: rgba(255, 45, 120, 0.15);
+    }
+
+    /* ---- Spotlight cursor card ---- */
+    .spotlight-card {
+      position: relative;
+    }
+
+    /* ---- Bento Grid ---- */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1.25rem;
+    }
+    .bento-grid .colspan-2 { grid-column: span 2; }
+    .bento-grid .rowspan-2 { grid-row: span 2; }
+
+    @media (max-width: 1024px) {
+      .bento-grid { grid-template-columns: 1fr 1fr; }
+      .bento-grid .colspan-2 { grid-column: span 2; }
+    }
+    @media (max-width: 768px) {
+      .bento-grid { grid-template-columns: 1fr; gap: 1rem; }
+      .bento-grid .colspan-2 { grid-column: span 1; }
+      .feature-card { padding: 1.75rem; }
+    }
+
+    /* ---- Stats ---- */
+    .stat-number {
+      font-size: 3.75rem;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      font-family: 'JetBrains Mono', monospace;
+      background: linear-gradient(135deg, var(--text-primary) 40%, var(--text-muted));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ---- Commands Table ---- */
+    .cmd-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    .cmd-table th {
+      text-align: left;
+      padding: 1rem 1.5rem;
+      font-weight: 600;
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .cmd-table td {
+      padding: 1.125rem 1.5rem;
+      font-size: 0.9375rem;
+      border-bottom: 1px solid rgba(26, 26, 40, 0.3);
+      transition: background 0.2s ease;
+    }
+    .cmd-table tr:last-child td { border-bottom: none; }
+    .cmd-table tr:hover td { background: rgba(255, 45, 120, 0.02); }
+
+    .cmd-tag {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      background: rgba(255, 45, 120, 0.06);
+      border: 1px solid rgba(255, 45, 120, 0.08);
+      color: var(--accent-soft);
+      font-size: 0.8125rem;
+      font-weight: 500;
+    }
+
+    .cmd-usage {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+    }
+
+    /* ---- Section Reveal ---- */
+    section {
+      opacity: 0;
+      transform: translateY(32px);
+      transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    section.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    section#hero {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ---- Logo pulse ring ---- */
+    .logo-ring {
+      position: absolute;
+      inset: -8px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 45, 120, 0.08);
+      animation: pulseGlow 3s ease-in-out infinite;
+    }
+
+    /* ---- Scroll Progress ---- */
+    .scroll-progress {
+      position: fixed;
+      top: 0; left: 0;
+      height: 1.5px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-soft), transparent);
+      z-index: 200;
+      width: 0%;
+      transition: width 0.05s linear;
+    }
+
+    /* ---- "Live" Data Stream (marquee) ---- */
+    @keyframes marquee {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .marquee-track {
+      animation: marquee 40s linear infinite;
+      will-change: transform;
+    }
+    .marquee-track:hover { animation-play-state: paused; }
+
+    /* ---- Magnetic Buttons ---- */
+    .magnetic-btn {
+      transform: translate(var(--mx, 0px), var(--my, 0px));
+    }
+
+    /* ---- Separator dashes ---- */
+    .dash-divider {
+      height: 1px;
+      background: repeating-linear-gradient(
+        90deg,
+        var(--border) 0px,
+        var(--border) 6px,
+        transparent 6px,
+        transparent 12px
+      );
+    }
+
+    /* ---- Code block in how-it-works ---- */
+    .code-snippet {
+      background: #07070e;
+      border-radius: var(--radius-sm);
+      padding: 1.25rem 1.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    /* ---- Status breathing dots ---- */
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #22d3ee;
+      box-shadow: 0 0 12px rgba(34, 211, 238, 0.3);
+      animation: breathe 2.4s ease-in-out infinite;
+    }
+
+    /* ---- Highlight bar ---- */
+    .accent-bar {
+      width: 2px;
+      height: 1.5rem;
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(255, 45, 120, 0.2);
+      border-radius: 2px;
+    }
+
+    /* ---- Section label ---- */
+    .section-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.375rem 1rem;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    /* ---- Glow text utility ---- */
+    .text-glow {
+      text-shadow: 0 0 40px rgba(255, 45, 120, 0.08);
+    }
+
+    /* ---- Step numbers ---- */
+    .step-num {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      background: rgba(255, 45, 120, 0.08);
+      border: 1px solid rgba(255, 45, 120, 0.1);
+      color: var(--accent-soft);
+      flex-shrink: 0;
+    }
+
+    /* ---- Progress bar in cards ---- */
+    .progress-track {
+      height: 3px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.04);
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-soft));
+      box-shadow: 0 0 12px rgba(255, 45, 120, 0.15);
+    }
+
+    /* ---- Fox glow on hero ---- */
+    .fox-glow {
+      filter: drop-shadow(0 0 24px rgba(255, 45, 120, 0.15));
+    }
+
+    /* ---- Terminal write effect container ---- */
+    .typewriter-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1.1em;
+      background: var(--accent);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 0.8s step-end infinite;
+    }
+
+    /* ---- Bento card inner micro-animations ---- */
+    .pulse-item {
+      animation: dataPulse 2s ease-in-out infinite;
+    }
+
+    /* ---- Table-of-contents link indicator ---- */
+    .toc-link {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 0;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: all 0.3s ease;
+      border-bottom: 1px solid transparent;
+    }
+    .toc-link:hover {
+      color: var(--text-primary);
+    }
+
+    @media (max-width: 768px) {
+      .stat-number { font-size: 2.5rem; }
+      .terminal-body { font-size: 0.75rem; padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Grain Overlay -->
+  <div class="grain-overlay"></div>
+  <div class="scanlines"></div>
+
+  <!-- Scroll Progress -->
+  <div class="scroll-progress" id="scrollProgress"></div>
+
+  <!-- ============================== -->
+  <!-- NAVBAR -->
+  <!-- ============================== -->
+  <nav class="navbar" id="navbar">
+    <div class="container flex items-center justify-between">
+      <a href="#" class="flex items-center gap-3 no-underline">
+        <div class="relative">
+          <svg width="34" height="34" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" class="fox-glow">
+            <defs>
+              <linearGradient id="navGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ff2d78"/>
+                <stop offset="100%" stop-color="#ff6b9d"/>
+              </linearGradient>
+            </defs>
+            <circle cx="100" cy="100" r="90" fill="url(#navGrad)"/>
+            <path d="M60,140 L100,40 L140,140 L100,110 Z" fill="#050508"/>
+            <circle cx="85" cy="100" r="6" fill="#fff"/>
+            <circle cx="115" cy="100" r="6" fill="#fff"/>
+          </svg>
+        </div>
+        <span class="text-lg font-semibold tracking-tight text-white">AgentFox</span>
+      </a>
+      <div class="hidden md:flex items-center gap-8">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#workflow" class="nav-link">Workflow</a>
+        <a href="#commands" class="nav-link">Commands</a>
+        <a href="https://github.com/MaenExists/AgentFox" target="_blank" rel="noopener" class="nav-link">GitHub</a>
+      </div>
+      <a href="https://github.com/MaenExists/AgentFox" target="_blank" rel="noopener" class="btn-primary text-sm !px-5 !py-2.5 hidden md:inline-flex">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 11.5L2.5 8L6 4.5"/>
+          <path d="M2.5 8H13.5"/>
+        </svg>
+        <span>Install</span>
+      </a>
+      <!-- Mobile menu button -->
+      <button class="md:hidden text-zinc-400 p-2" id="mobileMenuBtn" aria-label="Menu">
+        <svg width="22" height="22" viewBox="0 0 22 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <line x1="2" y1="3" x2="20" y2="3"/>
+          <line x1="2" y1="8" x2="20" y2="8"/>
+          <line x1="2" y1="13" x2="20" y2="13"/>
+        </svg>
+      </button>
+    </div>
+    <!-- Mobile nav -->
+    <div class="container md:hidden overflow-hidden transition-all duration-300" id="mobileNav" style="max-height: 0; opacity: 0;">
+      <div class="pt-4 pb-2 flex flex-col gap-3">
+        <a href="#features" class="text-sm text-zinc-400 hover:text-white transition-colors">Features</a>
+        <a href="#workflow" class="text-sm text-zinc-400 hover:text-white transition-colors">Workflow</a>
+        <a href="#commands" class="text-sm text-zinc-400 hover:text-white transition-colors">Commands</a>
+        <a href="https://github.com/MaenExists/AgentFox" target="_blank" class="text-sm text-zinc-400 hover:text-white transition-colors">GitHub</a>
+        <a href="https://github.com/MaenExists/AgentFox" target="_blank" rel="noopener" class="btn-primary !px-5 !py-2.5 mt-2 w-fit">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 11.5L2.5 8L6 4.5"/>
+            <path d="M2.5 8H13.5"/>
+          </svg>
+          <span>Install AgentFox</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============================== -->
+  <!-- HERO -->
+  <!-- ============================== -->
+  <section class="min-h-[100dvh] flex items-center relative overflow-hidden pt-28 pb-16" id="hero">
+    <!-- Ambient Background -->
+    <div class="absolute inset-0 pointer-events-none overflow-hidden">
+      <div class="absolute top-[-15%] right-[-8%] w-[50%] h-[60%] opacity-[0.04]" style="background: radial-gradient(ellipse at center, #ff2d78 0%, transparent 70%);"></div>
+      <div class="absolute bottom-[-12%] left-[-5%] w-[35%] h-[40%] opacity-[0.025]" style="background: radial-gradient(ellipse at center, #22d3ee 0%, transparent 70%);"></div>
+      <div class="absolute inset-0 grid-bg opacity-60"></div>
+    </div>
+
+    <div class="container w-full relative z-10">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+        <!-- Left Content -->
+        <div class="space-y-8">
+          <!-- Status badge -->
+          <div class="inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-zinc-800 bg-zinc-900/40 text-zinc-400 text-sm font-medium animate-fade-up stagger-1">
+            <span class="status-dot"></span>
+            <span class="text-xs font-mono tracking-wide">D</span>
+            <span class="text-zinc-500">Daemon persistent &middot; v0.1.0</span>
+          </div>
+
+          <h1 class="text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-extrabold tracking-tighter leading-none text-glow animate-fade-up stagger-2">
+            <span class="block text-zinc-500 font-light tracking-widest text-xs mb-4 uppercase">AgentFox v0.1.0</span>
+            <span class="block">The Browser</span>
+            <span class="block mt-1">Built for</span>
+            <span class="block mt-1" style="background: linear-gradient(135deg, var(--accent), var(--accent-soft), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+              AI Agents
+            </span>
+          </h1>
+
+          <p class="text-lg md:text-xl text-zinc-500 leading-relaxed max-w-[65ch] animate-fade-up stagger-3">
+            A persistent, daemon-backed browser runtime that AI agents use directly.
+            No cold starts, no brittle selectors, no overhead. Just fast, semantic web interaction at machine speed.
+          </p>
+
+          <div class="flex flex-wrap gap-4 animate-fade-up stagger-4">
+            <a href="https://github.com/MaenExists/AgentFox" target="_blank" rel="noopener" class="btn-primary magnetic-btn">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 11.5L2.5 8L6 4.5"/>
+                <path d="M2.5 8H13.5"/>
+              </svg>
+              <span>Install AgentFox</span>
+            </a>
+            <a href="#workflow" class="btn-secondary magnetic-btn">
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="8" r="6"/>
+                <path d="M6.5 5.5L10.5 8L6.5 10.5V5.5Z"/>
+              </svg>
+              <span>See the Loop</span>
+            </a>
+          </div>
+
+          <!-- Trust markers -->
+          <div class="flex flex-wrap items-center gap-x-8 gap-y-3 text-sm text-zinc-600 animate-fade-up stagger-5 pt-2">
+            <div class="flex items-center gap-2">
+              <div class="w-1 h-1 rounded-full bg-zinc-600"></div>
+              <span>Rust + WebKitGTK</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-1 h-1 rounded-full bg-zinc-600"></div>
+              <span>Open Source (MIT)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-1 h-1 rounded-full bg-zinc-600"></div>
+              <span>Zero Config</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Terminal -->
+        <div class="animate-slide-right stagger-3">
+          <div class="terminal-window">
+            <div class="terminal-header">
+              <div class="terminal-dot" style="background: #ef4444; opacity: 0.8;"></div>
+              <div class="terminal-dot" style="background: #eab308; opacity: 0.8;"></div>
+              <div class="terminal-dot" style="background: #22c55e; opacity: 0.8;"></div>
+              <span class="text-[11px] text-zinc-600 ml-2 font-mono tracking-wide">afoxd -- daemon.pid 8412</span>
+              <span class="ml-auto flex items-center gap-1.5 text-[11px] text-zinc-600 font-mono">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-breathe"></span>
+                <span>alive</span>
+              </span>
+            </div>
+            <div class="terminal-body text-sm leading-relaxed" id="terminalBody">
+              <div class="terminal-line" style="animation-delay: 0.3s;">
+                <span class="prompt green">$</span>
+                <span class="syn-cmd">afox search</span>
+                <span class="syn-str">"agentfox browser for agents"</span>
+              </div>
+              <div class="terminal-line mt-1.5" style="animation-delay: 0.7s;">
+                <span class="prompt muted">>></span>
+                <span class="syn-out">resolving query via DuckDuckGo...</span>
+              </div>
+              <div class="terminal-line mt-1.5" style="animation-delay: 1.1s;">
+                <span class="prompt muted">>></span>
+                <span class="syn-out">page loaded &middot; <span class="syn-highlight">47 interactive elements</span></span>
+              </div>
+
+              <div class="terminal-line mt-4" style="animation-delay: 1.6s;">
+                <span class="prompt green">$</span>
+                <span class="syn-cmd">afox view</span>
+              </div>
+              <div class="terminal-line mt-1.5" style="animation-delay: 2.0s;">
+                <span class="prompt muted">>></span>
+                <span class="syn-out" style="line-height: 1.6;">
+                  <span class="syn-comment">## [e10] Search Results</span><br>
+                  <span class="syn-comment">  [e15] <span class="text-zinc-500">(link)</span> AgentFox &mdash; Fastest Browser for AI</span><br>
+                  <span class="syn-comment">  [e21] <span class="text-zinc-500">(link)</span> Benchmark: Playwright vs AgentFox</span><br>
+                  <span class="syn-comment">  [e27] <span class="text-zinc-500">(input)</span> Search: [...]</span>
+                </span>
+              </div>
+
+              <div class="terminal-line mt-4" style="animation-delay: 2.6s;">
+                <span class="prompt green">$</span>
+                <span class="syn-cmd">afox click</span>
+                <span class="syn-flag">e15</span>
+                <span class="syn-str">  # 2ms round-trip</span>
+              </div>
+              <div class="terminal-line mt-1.5" style="animation-delay: 3.0s;">
+                <span class="prompt muted">>></span>
+                <span class="syn-out">navigated to github.com/MaenExists/AgentFox</span>
+              </div>
+              <div class="terminal-line mt-1.5" style="animation-delay: 3.3s;">
+                <span class="prompt muted">>></span>
+                <span class="syn-out">cookies intact &middot; session <span class="syn-highlight">persistent</span></span>
+              </div>
+
+              <div class="terminal-line mt-4" style="animation-delay: 3.7s;">
+                <span class="prompt green">$</span>
+                <span class="typewriter-cursor"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Terminal caption -->
+          <div class="mt-5 flex items-center gap-4 text-xs text-zinc-600 font-mono">
+            <span class="flex items-center gap-1.5">
+              <span class="w-1 h-1 rounded-full bg-zinc-600"></span>
+              warm latency: <span class="text-zinc-400">~10ms</span>
+            </span>
+            <span class="w-px h-3 bg-zinc-800"></span>
+            <span class="flex items-center gap-1.5">
+              <span class="w-1 h-1 rounded-full bg-zinc-600"></span>
+              session: <span class="text-zinc-400">active</span>
+            </span>
+            <span class="w-px h-3 bg-zinc-800"></span>
+            <span class="flex items-center gap-1.5">
+              <span class="w-1 h-1 rounded-full bg-zinc-600"></span>
+              daemon: <span class="text-green-500">alive</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== -->
+  <!-- FEATURES (Bento Grid) -->
+  <!-- ============================== -->
+  <section id="features" class="py-32 relative">
+    <div class="absolute inset-0 pointer-events-none">
+      <div class="absolute inset-0 grid-bg opacity-30"></div>
+    </div>
+
+    <div class="container relative z-10">
+      <!-- Section header -->
+      <div class="max-w-3xl mb-20">
+        <div class="section-label animate-fade-up stagger-1">
+          <span class="accent-bar"></span>
+          <span>Why AgentFox</span>
+        </div>
+        <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter leading-none mt-8 animate-fade-up stagger-2">
+          The Runtime
+          <span class="block mt-1" style="background: linear-gradient(135deg, var(--accent), var(--accent-soft), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+            Agents Deserve
+          </span>
+        </h2>
+        <p class="text-lg text-zinc-500 leading-relaxed max-w-[65ch] mt-6 animate-fade-up stagger-3">
+          Every millisecond counts when your agent is browsing. AgentFox eliminates the overhead of traditional browser automation so agents move at machine speed.
+        </p>
+      </div>
+
+      <!-- Bento Grid -->
+      <div class="bento-grid">
+        <!-- Card 1: Speed - Wide -->
+        <div class="feature-card colspan-2 spotlight-card">
+          <div class="card-border"></div>
+          <div class="flex items-start gap-5 mb-7">
+            <div class="icon-ring">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-2xl font-semibold tracking-tight">10ms Warm Latency</h3>
+              <p class="text-zinc-500 mt-1.5 leading-relaxed">The daemon keeps your browser session alive. Every command hits a warm engine. Compare that to Puppeteer or Playwright cold-spawn overhead.</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-6 pt-6 border-t border-zinc-800/50">
+            <div>
+              <div class="stat-number !text-3xl">&lt;10ms</div>
+              <div class="text-xs text-zinc-600 mt-1.5 font-mono uppercase tracking-wider">Warm command</div>
+            </div>
+            <div>
+              <div class="stat-number !text-3xl">&lt;500ms</div>
+              <div class="text-xs text-zinc-600 mt-1.5 font-mono uppercase tracking-wider">Startup time</div>
+            </div>
+            <div>
+              <div class="stat-number !text-3xl">~47.2MB</div>
+              <div class="text-xs text-zinc-600 mt-1.5 font-mono uppercase tracking-wider">Memory footprint</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Agent-Native View -->
+        <div class="feature-card spotlight-card">
+          <div class="card-border"></div>
+          <div class="icon-ring mb-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold tracking-tight mb-3">Clean Markdown</h3>
+          <p class="text-zinc-500 leading-relaxed text-sm mb-5">Inspect through <span class="text-zinc-300 font-mono text-xs">afox view</span> and get a semantic tree with stable IDs, pruned of noise.</p>
+          <div class="bg-black/30 rounded-xl p-4 border border-zinc-800/30">
+            <code class="text-xs text-zinc-500 font-mono leading-relaxed block">
+              <span class="text-zinc-600">## [e10] Search Results</span><br>
+              <span class="text-zinc-600">  [e15] (link) Read Article</span><br>
+              <span class="text-zinc-600">  [e21] (input) [...]</span>
+            </code>
+          </div>
+        </div>
+
+        <!-- Card 3: Direct-ID -->
+        <div class="feature-card spotlight-card">
+          <div class="card-border"></div>
+          <div class="icon-ring mb-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold tracking-tight mb-3">Direct-ID</h3>
+          <p class="text-zinc-500 leading-relaxed text-sm mb-5">No brittle CSS selectors. Every element gets a stable <span class="text-zinc-300 font-mono text-xs">[e1]</span> ID that persists across commands.</p>
+          <div class="flex items-center gap-3 text-sm">
+            <span class="cmd-tag text-xs">afox click e15</span>
+            <span class="text-zinc-700 text-xs">&rarr;</span>
+            <span class="text-zinc-600 text-xs font-mono">bypass selector engine</span>
+          </div>
+        </div>
+
+        <!-- Card 4: Persistent Session -->
+        <div class="feature-card spotlight-card">
+          <div class="card-border"></div>
+          <div class="icon-ring mb-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2"/>
+              <path d="M2 8h20"/>
+              <path d="M8 2v20"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold tracking-tight mb-3">Persistent Sessions</h3>
+          <p class="text-zinc-500 leading-relaxed text-sm">Cookies, localStorage, JS state survive across commands. Log in once, interact freely.</p>
+          <div class="mt-6 pt-5 border-t border-zinc-800/30">
+            <div class="space-y-2.5 text-xs font-mono">
+              <div class="flex justify-between">
+                <span class="text-zinc-600">Cookies</span>
+                <span class="text-zinc-400">12 stored</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-zinc-600">localStorage</span>
+                <span class="text-zinc-400">8 keys</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-zinc-600">Session</span>
+                <span class="text-zinc-400">24m 17s</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 5: Lightweight -->
+        <div class="feature-card spotlight-card">
+          <div class="card-border"></div>
+          <div class="icon-ring mb-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5l6.74-6.76z"/>
+              <line x1="16" y1="8" x2="2" y2="22"/>
+              <line x1="17.5" y1="15" x2="9" y2="15"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold tracking-tight mb-3">Rust + WebKitGTK</h3>
+          <p class="text-zinc-500 leading-relaxed text-sm mb-5">Built in Rust, not Chromium. Lower memory and CPU footprint. Runs on low-spec machines.</p>
+          <div class="flex items-center gap-3">
+            <div class="progress-track flex-1">
+              <div class="progress-fill" style="width: 31%;"></div>
+            </div>
+            <span class="text-xs text-zinc-600 font-mono">31% of Chromium</span>
+          </div>
+        </div>
+
+        <!-- Card 6: LLM Summarization -->
+        <div class="feature-card spotlight-card">
+          <div class="card-border"></div>
+          <div class="icon-ring mb-6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 7 4 4 20 4 20 7"/>
+              <line x1="9" y1="20" x2="15" y2="20"/>
+              <line x1="12" y1="4" x2="12" y2="20"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold tracking-tight mb-3">LLM Summarization</h3>
+          <p class="text-zinc-500 leading-relaxed text-sm mb-5">Reduce context with on-the-fly AI summaries. Works with OpenAI, Groq, Ollama, any API.</p>
+          <div class="flex items-center gap-2">
+            <span class="cmd-tag text-xs">afox view --summarize</span>
+            <span class="text-zinc-700 text-xs">&rarr;</span>
+            <span class="text-zinc-600 text-xs font-mono">compressed to 124 tokens</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== -->
+  <!-- HOW IT WORKS / WORKFLOW -->
+  <!-- ============================== -->
+  <section id="workflow" class="py-32 relative">
+    <div class="absolute inset-0 pointer-events-none">
+      <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent"></div>
+    </div>
+
+    <div class="container">
+      <div class="max-w-3xl mb-20">
+        <div class="section-label animate-fade-up stagger-1">
+          <span class="accent-bar"></span>
+          <span>The Agentic Loop</span>
+        </div>
+        <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter leading-none mt-8 animate-fade-up stagger-2">
+          Three Commands.
+          <span class="block mt-1" style="background: linear-gradient(135deg, var(--accent), var(--accent-soft)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+            No Overhead.
+          </span>
+        </h2>
+      </div>
+
+      <!-- Workflow Demo -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-16 items-start">
+        <!-- Left: Terminal Demo (3 cols) -->
+        <div class="lg:col-span-3">
+          <div class="terminal-window">
+            <div class="terminal-header">
+              <div class="terminal-dot" style="background: #ef4444; opacity: 0.8;"></div>
+              <div class="terminal-dot" style="background: #eab308; opacity: 0.8;"></div>
+              <div class="terminal-dot" style="background: #22c55e; opacity: 0.8;"></div>
+              <span class="text-[11px] text-zinc-600 ml-2 font-mono tracking-wide">agent-loop.sh</span>
+              <span class="ml-auto text-[11px] text-zinc-700 font-mono">inspect-reason-act</span>
+            </div>
+            <div class="terminal-body text-sm">
+              <!-- Step 1 -->
+              <div class="flex items-center gap-3 text-xs text-zinc-600 font-mono mb-2.5">
+                <span class="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-500">01</span>
+                <span class="uppercase tracking-widest">Search</span>
+                <span class="h-px flex-1 bg-zinc-800"></span>
+              </div>
+              <div class="terminal-line" style="animation-delay: 0.2s;">
+                <span class="prompt green">$</span>
+                <span class="syn-cmd">afox search</span>
+                <span class="syn-str">"latest autonomous agent frameworks"</span>
+              </div>
+              <div class="terminal-line mt-1.5 mb-5" style="animation-delay: 0.5s;">
+                <span class="prompt muted">>></span>
+                <span class="syn-out">247 results &middot; 1.4s load &middot; <span class="syn-highlight">47 elements</span></span>
+              </div>
+
+              <!-- Step 2 -->
+              <div class="flex items-center gap-3 text-xs text-zinc-600 font-mono mb-2.5">
+                <span class="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-500">02</span>
+                <span class="uppercase tracking-widest">Inspect</span>
+                <span class="h-px flex-1 bg-zinc-800"></span>
+              </div>
+              <div class="terminal-line" style="animation-delay: 0.8s;">
+                <span class="prompt green">$</span>
+                <span class="syn-cmd">afox view</span>
+              </div>
+              <div class="terminal-line mt-1.5 mb-5" style="animation-delay: 1.1s;">
+                <span class="prompt muted">>></span>
+                <span class="syn-out" style="line-height: 1.7;">
+                  <span class="syn-comment">## [e10] Results</span><br>
+                  <span class="syn-comment">  [e15] (link) AgentFox: Fastest Browser for AI</span><br>
+                  <span class="syn-comment">  [e21] (link) Benchmark: Playwright vs AgentFox</span><br>
+                  <span class="syn-comment">  [e27] (input) refine search: [    ]</span>
+                </span>
+              </div>
+
+              <!-- Step 3 -->
+              <div class="flex items-center gap-3 text-xs text-zinc-600 font-mono mb-2.5">
+                <span class="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-500">03</span>
+                <span class="uppercase tracking-widest">Act</span>
+                <span class="h-px flex-1 bg-zinc-800"></span>
+              </div>
+              <div class="terminal-line" style="animation-delay: 1.5s;">
+                <span class="prompt green">$</span>
+                <span class="syn-cmd">afox click</span>
+                <span class="syn-flag">e15</span>
+                <span class="syn-str">  # 2ms round-trip</span>
+              </div>
+              <div class="terminal-line mt-1.5" style="animation-delay: 1.8s;">
+                <span class="prompt muted">>></span>
+                <span class="syn-out">navigated &middot; session <span class="syn-highlight">persistent</span> &middot; cookies intact</span>
+              </div>
+              <div class="terminal-line mt-4" style="animation-delay: 2.1s;">
+                <span class="prompt green">$</span>
+                <span class="typewriter-cursor"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Steps explanation (2 cols) -->
+        <div class="lg:col-span-2 space-y-5">
+          <div class="feature-card !p-6 !bg-zinc-900/40">
+            <div class="flex items-center gap-4">
+              <div class="step-num">1</div>
+              <div>
+                <h4 class="font-semibold text-base tracking-tight">Search & Navigate</h4>
+                <p class="text-sm text-zinc-500 mt-1">Smart navigation that resolves URLs or searches via DuckDuckGo. Converts any query into a browsable page.</p>
+              </div>
+            </div>
+          </div>
+          <div class="feature-card !p-6 !bg-zinc-900/40">
+            <div class="flex items-center gap-4">
+              <div class="step-num">2</div>
+              <div>
+                <h4 class="font-semibold text-base tracking-tight">Inspect Semantically</h4>
+                <p class="text-sm text-zinc-500 mt-1">Clean Markdown with stable element IDs. No raw HTML. No DOM noise. Just roles, text, and actions.</p>
+              </div>
+            </div>
+          </div>
+          <div class="feature-card !p-6 !bg-zinc-900/40">
+            <div class="flex items-center gap-4">
+              <div class="step-num">3</div>
+              <div>
+                <h4 class="font-semibold text-base tracking-tight">Act Instantly</h4>
+                <p class="text-sm text-zinc-500 mt-1">Click, fill, extract. Realistic event sequences on a warm daemon. ~10ms per action.</p>
+              </div>
+            </div>
+          </div>
+          <div class="bg-zinc-900/20 rounded-2xl p-5 border border-zinc-800/30 mt-2">
+            <div class="flex items-center gap-2 text-xs text-zinc-600 font-mono mb-3">
+              <span class="syn-comment">// total loop time</span>
+            </div>
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                <span class="text-2xl font-bold font-mono" style="color: var(--accent);">&lt;2s</span>
+                <span class="text-xs text-zinc-600">from cold</span>
+              </div>
+              <div class="w-px h-8 bg-zinc-800"></div>
+              <div class="flex items-center gap-2">
+                <span class="text-2xl font-bold font-mono" style="color: var(--accent-soft);">~10ms</span>
+                <span class="text-xs text-zinc-600">warm action</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== -->
+  <!-- PERFORMANCE / DATA STREAM -->
+  <!-- ============================== -->
+  <section class="py-32 relative overflow-hidden" id="stats">
+    <div class="absolute inset-0 pointer-events-none">
+      <div class="absolute inset-0 grid-bg opacity-20"></div>
+      <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent"></div>
+    </div>
+
+    <div class="container relative z-10">
+      <!-- Metrics Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-16 mb-28">
+        <div class="animate-fade-up stagger-1">
+          <div class="stat-number">&lt;10</div>
+          <div class="flex items-center gap-2 mt-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-breathe"></span>
+            <span class="text-sm text-zinc-600 font-mono uppercase tracking-wider">Warm ms latency</span>
+          </div>
+        </div>
+        <div class="animate-fade-up stagger-2">
+          <div class="stat-number">47.2</div>
+          <div class="flex items-center gap-2 mt-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-zinc-600"></span>
+            <span class="text-sm text-zinc-600 font-mono uppercase tracking-wider">MB memory</span>
+          </div>
+        </div>
+        <div class="animate-fade-up stagger-3">
+          <div class="stat-number">0.5</div>
+          <div class="flex items-center gap-2 mt-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-breathe"></span>
+            <span class="text-sm text-zinc-600 font-mono uppercase tracking-wider">Sec startup</span>
+          </div>
+        </div>
+        <div class="animate-fade-up stagger-4">
+          <div class="stat-number">12</div>
+          <div class="flex items-center gap-2 mt-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-zinc-600"></span>
+            <span class="text-sm text-zinc-600 font-mono uppercase tracking-wider">Commands</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Stream Marquee -->
+      <div class="overflow-hidden mb-28">
+        <div class="flex marquee-track gap-16">
+          <div class="flex gap-16 flex-shrink-0">
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox search</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox open</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox view</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox snap</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox click</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox fill</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox text</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox eval</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox auth</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox ping</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox quit</span>
+          </div>
+          <div class="flex gap-16 flex-shrink-0">
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox search</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox open</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox view</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox snap</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox click</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox fill</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox text</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox eval</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox auth</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox ping</span>
+            <span class="text-[11px] font-mono text-zinc-700 uppercase tracking-widest">afox quit</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Thesis Quote -->
+      <div class="relative rounded-3xl p-10 md:p-16 border border-zinc-800/50 bg-zinc-900/20 shadow-diffuse">
+        <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-zinc-700 to-transparent"></div>
+        <div class="absolute -top-3 left-10 flex items-center gap-2 text-[11px] text-zinc-700 font-mono tracking-wide">
+          <span class="w-1.5 h-1.5 rounded-full" style="background: var(--accent);"></span>
+          thesis.md
+        </div>
+        <blockquote class="text-xl md:text-2xl font-medium text-zinc-300 leading-relaxed max-w-4xl">
+          "AgentFox is a fast, lightweight, persistent browser runtime for AI agents, exposed as a CLI, designed to make agent browsing dramatically lighter and faster than existing browser automation tools."
+        </blockquote>
+        <div class="mt-8 flex items-center gap-4 text-sm">
+          <span class="text-zinc-600 font-mono tracking-wide">product thesis</span>
+          <span class="w-px h-4 bg-zinc-800"></span>
+          <span class="text-zinc-700 font-mono">v0.1.0</span>
+          <span class="w-px h-4 bg-zinc-800"></span>
+          <span class="text-zinc-700 font-mono">MIT License</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== -->
+  <!-- COMMANDS REFERENCE -->
+  <!-- ============================== -->
+  <section id="commands" class="py-32 relative">
+    <div class="absolute inset-0 pointer-events-none">
+      <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent"></div>
+    </div>
+
+    <div class="container">
+      <div class="max-w-3xl mb-16">
+        <div class="section-label animate-fade-up stagger-1">
+          <span class="accent-bar"></span>
+          <span>Reference</span>
+        </div>
+        <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter leading-none mt-8 animate-fade-up stagger-2">
+          The Surface.
+          <span class="block mt-1" style="background: linear-gradient(135deg, var(--accent), var(--accent-soft)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+            Twelve Commands.
+          </span>
+        </h2>
+        <p class="text-lg text-zinc-500 leading-relaxed max-w-[65ch] mt-6 animate-fade-up stagger-3">
+          Every operation designed for the agent loop. Zero fluff. Machine-optimized.
+        </p>
+      </div>
+
+      <div class="bg-zinc-900/30 rounded-2xl border border-zinc-800/40 overflow-hidden shadow-diffuse animate-fade-up stagger-4">
+        <table class="cmd-table">
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th class="hidden md:table-cell">Usage</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="cmd-tag">search</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox search &lt;q&gt;</span></td>
+              <td class="text-zinc-400">Smart navigation. Resolves URLs or searches via DuckDuckGo.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">open</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox open &lt;url&gt;</span></td>
+              <td class="text-zinc-400">Navigate the current session to a specific URL.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">view</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox view [-s]</span></td>
+              <td class="text-zinc-400">Clean Markdown with stable element IDs.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">snap</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox snap [-s]</span></td>
+              <td class="text-zinc-400">Raw semantic JSON tree.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">click</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox click &lt;id&gt;</span></td>
+              <td class="text-zinc-400">Realistic click. Full event sequence: pointerdown to click.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">fill</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox fill &lt;id&gt; &lt;v&gt;</span></td>
+              <td class="text-zinc-400">Form input with proper event triggering.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">text</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox text &lt;id&gt;</span></td>
+              <td class="text-zinc-400">Clean text from any element.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">eval</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox eval &lt;code&gt;</span></td>
+              <td class="text-zinc-400">Raw JS execution in page context.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">auth</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox auth &lt;key&gt; [url] [model]</span></td>
+              <td class="text-zinc-400">Set LLM credentials for summarization.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">ping</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox ping</span></td>
+              <td class="text-zinc-400">Check daemon. Auto-starts if not running.</td>
+            </tr>
+            <tr>
+              <td><span class="cmd-tag">quit</span></td>
+              <td class="hidden md:table-cell"><span class="cmd-usage">afox quit</span></td>
+              <td class="text-zinc-400">Shutdown the daemon cleanly.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== -->
+  <!-- CTA SECTION -->
+  <!-- ============================== -->
+  <section class="py-32 relative">
+    <div class="absolute inset-0 pointer-events-none">
+      <div class="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent"></div>
+    </div>
+
+    <div class="container">
+      <div class="relative rounded-3xl p-12 md:p-20 text-center overflow-hidden border border-zinc-800/50" style="background: linear-gradient(135deg, #0c0c14 0%, #0f0f18 50%, #0a0a12 100%);">
+        <!-- Ambient glow -->
+        <div class="absolute inset-0 pointer-events-none">
+          <div class="absolute top-[-30%] left-1/2 -translate-x-1/2 w-[70%] h-[70%] opacity-[0.03]" style="background: radial-gradient(ellipse, var(--accent) 0%, transparent 70%);"></div>
+          <div class="absolute bottom-[-20%] right-[-10%] w-[40%] h-[40%] opacity-[0.02]" style="background: radial-gradient(ellipse, var(--cyan) 0%, transparent 70%);"></div>
+        </div>
+
+        <div class="relative z-10 max-w-2xl mx-auto">
+          <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-zinc-800 bg-zinc-900/40 text-zinc-500 text-xs font-mono mb-8">
+            <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-breathe"></span>
+            <span>Daemon ready &middot; waiting for commands</span>
+          </div>
+
+          <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter text-white leading-none">
+            Make Your Agent
+            <span class="block mt-1" style="background: linear-gradient(135deg, var(--accent), var(--accent-soft), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+              Insanely Fast.
+            </span>
+          </h2>
+          <p class="text-lg text-zinc-500 leading-relaxed mt-6 max-w-[55ch] mx-auto">
+            One-line install. Zero configuration. The browser that treats AI agents as first-class citizens.
+          </p>
+
+          <div class="flex flex-wrap justify-center gap-4 mt-10">
+            <a href="https://github.com/MaenExists/AgentFox" target="_blank" rel="noopener" class="btn-primary magnetic-btn text-base !px-8 !py-3.5">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 11.5L2.5 8L6 4.5"/>
+                <path d="M2.5 8H13.5"/>
+              </svg>
+              <span>Install AgentFox</span>
+            </a>
+            <a href="https://github.com/MaenExists/AgentFox" target="_blank" rel="noopener" class="btn-secondary magnetic-btn !border-zinc-700 !text-zinc-300 hover:!border-zinc-500 !px-8 !py-3.5">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                <path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+              </svg>
+              <span>Source on GitHub</span>
+            </a>
+          </div>
+
+          <!-- Install command -->
+          <div class="mt-12 pt-10 border-t border-zinc-800/50">
+            <div class="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-black/40 border border-zinc-800/40 font-mono text-sm">
+              <span class="text-zinc-600">$</span>
+              <span class="text-zinc-400">curl -sSL https://raw.githubusercontent.com/MaenExists/AgentFox/main/install.sh</span>
+              <span class="text-zinc-700">|</span>
+              <span class="text-zinc-400">bash</span>
+              <span class="w-1.5 h-4 bg-zinc-600 animate-blink"></span>
+            </div>
+            <p class="text-xs text-zinc-700 mt-3 font-mono">
+              Requires Rust &amp; libwebkit2gtk-4.1-dev on Linux
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== -->
+  <!-- FOOTER -->
+  <!-- ============================== -->
+  <footer class="py-16">
+    <div class="container">
+      <div class="flex flex-col md:flex-row items-center justify-between gap-8">
+        <div class="flex items-center gap-3">
+          <svg width="28" height="28" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="footerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ff2d78"/>
+                <stop offset="100%" stop-color="#ff6b9d"/>
+              </linearGradient>
+            </defs>
+            <circle cx="100" cy="100" r="90" fill="url(#footerGrad)"/>
+            <path d="M60,140 L100,40 L140,140 L100,110 Z" fill="#050508"/>
+            <circle cx="85" cy="100" r="5" fill="#fff"/>
+            <circle cx="115" cy="100" r="5" fill="#fff"/>
+          </svg>
+          <span class="text-sm font-semibold tracking-tight text-white">AgentFox</span>
+        </div>
+        <div class="flex items-center gap-8 text-sm">
+          <span class="text-zinc-600">&copy; 2026 AgentFox</span>
+          <a href="https://github.com/MaenExists/AgentFox" target="_blank" rel="noopener" class="text-zinc-500 hover:text-zinc-300 transition-colors">GitHub</a>
+          <a href="https://github.com/MaenExists/AgentFox/blob/main/LICENSE" target="_blank" rel="noopener" class="text-zinc-500 hover:text-zinc-300 transition-colors">MIT License</a>
+          <a href="https://github.com/MaenExists/AgentFox/issues" target="_blank" rel="noopener" class="text-zinc-500 hover:text-zinc-300 transition-colors">Issues</a>
+        </div>
+      </div>
+      <div class="mt-8 text-center text-xs text-zinc-700 font-mono">
+        <span class="text-zinc-800">//</span> Built with Rust &amp; WebKitGTK. Not another browser automation wrapper.
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============================== -->
+  <!-- JAVASCRIPT -->
+  <!-- ============================== -->
+  <script>
+    // Navbar scroll effect
+    const navbar = document.getElementById('navbar');
+    const scrollProgress = document.getElementById('scrollProgress');
+
+    window.addEventListener('scroll', () => {
+      const scrollY = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = (scrollY / docHeight) * 100;
+
+      navbar.classList.toggle('scrolled', scrollY > 40);
+      scrollProgress.style.width = progress + '%';
+    }, { passive: true });
+
+    // Section reveal via IntersectionObserver
+    const sections = document.querySelectorAll('section:not(#hero)');
+    const sectionObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+    sections.forEach(s => sectionObserver.observe(s));
+    document.getElementById('hero').classList.add('visible');
+
+    // Terminal replay on scroll into workflow view
+    const workflowSection = document.getElementById('workflow');
+    let terminalPlayed = false;
+
+    const workflowObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && !terminalPlayed) {
+          terminalPlayed = true;
+          const lines = workflowSection.querySelectorAll('.terminal-line');
+          lines.forEach((line, i) => {
+            line.style.animation = 'none';
+            void line.offsetHeight;
+            line.style.animation = null;
+            line.style.animationDelay = (0.2 + i * 0.28) + 's';
+          });
+        }
+      });
+    }, { threshold: 0.3 });
+
+    if (workflowSection) workflowObserver.observe(workflowSection);
+
+    // Magnetic hover for .magnetic-btn
+    document.querySelectorAll('.magnetic-btn').forEach(btn => {
+      btn.addEventListener('mousemove', (e) => {
+        const rect = btn.getBoundingClientRect();
+        const x = e.clientX - rect.left - rect.width / 2;
+        const y = e.clientY - rect.top - rect.height / 2;
+        const dist = Math.sqrt(x * x + y * y);
+        const maxDist = 200;
+        const strength = Math.min(1, Math.max(0, 1 - dist / maxDist));
+        btn.style.setProperty('--mx', (x * strength * 0.1) + 'px');
+        btn.style.setProperty('--my', (y * strength * 0.1) + 'px');
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.setProperty('--mx', '0px');
+        btn.style.setProperty('--my', '0px');
+      });
+    });
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', (e) => {
+        e.preventDefault();
+        const target = document.querySelector(anchor.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    // Mobile menu toggle
+    const mobileBtn = document.getElementById('mobileMenuBtn');
+    const mobileNav = document.getElementById('mobileNav');
+    if (mobileBtn && mobileNav) {
+      mobileBtn.addEventListener('click', () => {
+        const isOpen = mobileNav.style.maxHeight !== '0px' && mobileNav.style.maxHeight !== '';
+        if (isOpen) {
+          mobileNav.style.maxHeight = '0';
+          mobileNav.style.opacity = '0';
+        } else {
+          mobileNav.style.maxHeight = mobileNav.scrollHeight + 'px';
+          mobileNav.style.opacity = '1';
+        }
+      });
+    }
+  </script>
+
+</body>
+</html>
